@@ -409,7 +409,7 @@ uint dhd_txminmax = DHD_TXMINMAX;
 int dhd_dongle_ramsize;
 
 uint dhd_doflow = TRUE;
-uint dhd_dpcpoll = FALSE;
+uint dhd_dpcpoll = TRUE;
 
 module_param(dhd_doflow, uint, 0644);
 module_param(dhd_dpcpoll, uint, 0644);
@@ -850,7 +850,7 @@ dhdsdio_clk_kso_enab(dhd_bus_t *bus, bool on)
 		cmp_val = SBSDIO_FUNC1_SLEEPCSR_KSO_MASK |  SBSDIO_FUNC1_SLEEPCSR_DEVON_MASK;
 		bmask = cmp_val;
 
-		OSL_SLEEP(3);
+		OSL_SLEEP(5);
 	} else {
 		/* Put device to sleep, turn off  KSO  */
 		cmp_val = 0;
@@ -6756,7 +6756,7 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	sd1idle = TRUE;
 	dhd_readahead = TRUE;
 	retrydata = FALSE;
-	dhd_doflow = FALSE;
+	dhd_doflow = TRUE;
 	dhd_dongle_ramsize = 0;
 	dhd_txminmax = DHD_TXMINMAX;
 

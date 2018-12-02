@@ -26,6 +26,7 @@
 
 #include <linux/module.h>
 #include <linux/netdevice.h>
+#include <linux/compat.h>
 #include <net/netlink.h>
 
 #include <wl_android.h>
@@ -89,6 +90,10 @@
 
 #define CMD_KEEP_ALIVE		"KEEPALIVE"
 
+#define CMD_SETMIRACAST 	"SETMIRACAST"
+#define CMD_ASSOCRESPIE 	"ASSOCRESPIE"
+#define CMD_MAXLINKSPEED	"MAXLINKSPEED"
+#define CMD_RXRATESTATS 	"RXRATESTATS"
 
 /* CCX Private Commands */
 
@@ -150,12 +155,16 @@ struct io_cfg {
 	struct list_head list;
 };
 
-typedef struct android_wifi_priv_cmd {
-#ifdef CONFIG_64BIT
-	u64 bufaddr;
-#else
-	char *bufaddr;
+#ifdef CONFIG_COMPAT
+typedef struct android_wifi_priv_cmd_compat {
+	u32 bufaddr;
+	int used_len;
+	int total_len;
+} android_wifi_priv_cmd_compat;
 #endif
+
+typedef struct android_wifi_priv_cmd {
+	char *bufaddr;
 	int used_len;
 	int total_len;
 } android_wifi_priv_cmd;
@@ -1278,6 +1287,9 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	char *buf = NULL;
 	int bytes_written = 0;
 	android_wifi_priv_cmd priv_cmd;
+#ifdef CONFIG_COMPAT
+	android_wifi_priv_cmd_compat priv_cmd_compat;
+#endif
 
 	net_os_wake_lock(net);
 
@@ -1285,10 +1297,27 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		ret = -EINVAL;
 		goto exit;
 	}
+#ifdef CONFIG_COMPAT
+	if (is_compat_task()) {
+		if (copy_from_user(&priv_cmd_compat, ifr->ifr_data, sizeof(android_wifi_priv_cmd_compat))) {
+			ret = -EFAULT;
+			goto exit;
+		}
+		priv_cmd.bufaddr = (char *)(uintptr_t) priv_cmd_compat.bufaddr;
+		priv_cmd.used_len = priv_cmd_compat.used_len;
+		priv_cmd.total_len = priv_cmd_compat.total_len;
+	} else {
+		if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(android_wifi_priv_cmd))) {
+			ret = -EFAULT;
+			goto exit;
+		}
+	}
+#else
 	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(android_wifi_priv_cmd))) {
 		ret = -EFAULT;
 		goto exit;
 	}
+#endif
 	if (priv_cmd.total_len > PRIVATE_COMMAND_MAX_LEN)
 	{
 		DHD_ERROR(("%s: too long priavte command\n", __FUNCTION__));
@@ -1474,6 +1503,14 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		int skip = strlen(CMD_KEEP_ALIVE) + 1;
 		bytes_written = wl_keep_alive_set(net, command + skip, priv_cmd.total_len - skip);
 	}
+	else if (strnicmp(command, CMD_SETMIRACAST, strlen(CMD_SETMIRACAST)) == 0)
+		bytes_written = wldev_miracast_tuning(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_ASSOCRESPIE, strlen(CMD_ASSOCRESPIE)) == 0)
+		bytes_written = wldev_get_assoc_resp_ie(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_MAXLINKSPEED, strlen(CMD_MAXLINKSPEED))== 0)
+		bytes_written = wldev_get_max_linkspeed(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_RXRATESTATS, strlen(CMD_RXRATESTATS)) == 0)
+		bytes_written = wldev_get_rx_rate_stats(net, command, priv_cmd.total_len);
 	else if (strnicmp(command, CMD_ROAM_OFFLOAD, strlen(CMD_ROAM_OFFLOAD)) == 0) {
 		int enable = *(command + strlen(CMD_ROAM_OFFLOAD) + 1) - '0';
 		bytes_written = wl_cfg80211_enable_roam_offload(net, enable);
