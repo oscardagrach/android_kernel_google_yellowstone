@@ -722,6 +722,28 @@ bool pm_wakeup_pending(void)
 }
 
 /**
+ * get_wakeup_source_active - Get active wakeup source
+ *
+ * Get active process whom prevent system enter into suspend flow
+ *
+ */
+void get_wakeup_sources_active(void)
+{
+	struct wakeup_source *ws;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		spin_lock_irq(&ws->lock);
+        if (ws->autosleep_enabled && ws->active) {
+            pr_info("%s: wakeup_sources - [%s] is active\n", __func__,
+                        ws->name);
+        }
+        spin_unlock_irq(&ws->lock);
+    }
+    rcu_read_unlock();
+}
+
+/**
  * pm_get_wakeup_count - Read the number of registered wakeup events.
  * @count: Address to store the value at.
  * @block: Whether or not to block.
@@ -746,7 +768,7 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			split_counters(&cnt, &inpr);
 			if (inpr == 0 || signal_pending(current))
 				break;
-
+            get_wakeup_sources_active();
 			schedule();
 		}
 		finish_wait(&wakeup_count_wait_queue, &wait);

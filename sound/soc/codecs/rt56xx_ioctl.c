@@ -1,8 +1,8 @@
 /*
  * rt56xx_ioctl.h  --  RT56XX ALSA SoC audio driver IO control
  *
- * Copyright (c) 2011-2013 REALTEK SEMICONDUCTOR CORP. All rights reserved.
- * Author: Bard Liao <bardliao@realtek.com>
+ * Copyright 2012 Realtek Microelectronics
+ * Author: Bard <bardliao@realtek.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -40,7 +40,7 @@ static int rt56xx_hwdep_ioctl_common(struct snd_hwdep *hw,
 	int *buf, *p;
 
 	if (copy_from_user(&rt56xx, _rt56xx, sizeof(rt56xx))) {
-		dev_err(codec->dev, "copy_from_user faild\n");
+		dev_err(codec->dev,"copy_from_user faild\n");
 		return -EFAULT;
 	}
 	dev_dbg(codec->dev, "%s(): rt56xx.number=%d, cmd=%d\n",
@@ -48,21 +48,24 @@ static int rt56xx_hwdep_ioctl_common(struct snd_hwdep *hw,
 	buf = kmalloc(sizeof(*buf) * rt56xx.number, GFP_KERNEL);
 	if (buf == NULL)
 		return -ENOMEM;
-	if (copy_from_user(buf, rt56xx.buf, sizeof(*buf) * rt56xx.number))
+	if (copy_from_user(buf, rt56xx.buf, sizeof(*buf) * rt56xx.number)) {
 		goto err;
+	}
 
 	switch (cmd) {
 	case RT_READ_CODEC_REG_IOCTL:
-		for (p = buf; p < buf + rt56xx.number / 2; p++)
+		for (p = buf; p < buf + rt56xx.number / 2; p++) {
 			*(p + rt56xx.number / 2) = snd_soc_read(codec, *p);
-
+		}
 		if (copy_to_user(rt56xx.buf, buf, sizeof(*buf) * rt56xx.number))
 			goto err;
 		break;
+
 	case RT_WRITE_CODEC_REG_IOCTL:
 		for (p = buf; p < buf + rt56xx.number / 2; p++)
 			snd_soc_write(codec, *p, *(p + rt56xx.number / 2));
 		break;
+
 	case RT_READ_CODEC_INDEX_IOCTL:
 		if (NULL == rt56xx_ioctl_ops.index_read)
 			goto err;
@@ -74,6 +77,7 @@ static int rt56xx_hwdep_ioctl_common(struct snd_hwdep *hw,
 			sizeof(*buf) * rt56xx.number))
 			goto err;
 		break;
+
 	case RT_WRITE_CODEC_INDEX_IOCTL:
 		if (NULL == rt56xx_ioctl_ops.index_write)
 			goto err;
@@ -82,6 +86,7 @@ static int rt56xx_hwdep_ioctl_common(struct snd_hwdep *hw,
 			rt56xx_ioctl_ops.index_write(codec, *p,
 				*(p+rt56xx.number/2));
 		break;
+
 	default:
 		if (NULL == rt56xx_ioctl_ops.ioctl_common)
 			goto err;
@@ -102,7 +107,7 @@ static int rt56xx_codec_dump_reg(struct snd_hwdep *hw,
 		struct file *file, unsigned long arg)
 {
 	struct snd_soc_codec *codec = hw->private_data;
-	struct rt56xx_cmd __user *_rt56xx = (struct rt56xx_cmd *)arg;
+	struct rt56xx_cmd __user *_rt56xx =(struct rt56xx_cmd *)arg;
 	struct rt56xx_cmd rt56xx;
 	int i, *buf, number = codec->driver->reg_cache_size;
 
@@ -153,8 +158,7 @@ int realtek_ce_init_hwdep(struct snd_soc_codec *codec)
 
 	dev_dbg(codec->dev, "enter %s\n", __func__);
 
-	err = snd_hwdep_new(card, RT_CE_CODEC_HWDEP_NAME, 0, &hw);
-	if (err < 0)
+	if ((err = snd_hwdep_new(card, RT_CE_CODEC_HWDEP_NAME, 0, &hw)) < 0)
 		return err;
 
 	strcpy(hw->name, RT_CE_CODEC_HWDEP_NAME);

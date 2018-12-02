@@ -373,6 +373,11 @@ static long bcm2079x_dev_unlocked_ioctl(struct file *filp,
 			 "%s, BCMNFC_WAKE_CTL (%x, %lx):\n",
 			 __func__, cmd, arg);
 		gpio_set_value(bcm2079x_dev->wake_gpio, arg);
+		/*
+		 * Add 10 msec delay to avoid i2c no ack error
+		 * while pm enter suspend mode.
+		 */
+		mdelay(10);
 		break;
 	default:
 		dev_err(&bcm2079x_dev->client->dev,

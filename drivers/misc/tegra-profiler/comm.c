@@ -16,7 +16,6 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -25,6 +24,7 @@
 #include <linux/poll.h>
 #include <linux/bitops.h>
 #include <linux/err.h>
+#include <linux/mm.h>
 
 #include <asm/uaccess.h>
 
@@ -149,7 +149,7 @@ static ssize_t rb_read_undo(struct quadd_ring_buffer *rb, size_t length)
 	else
 		rb->pos_read += rb->size - length;
 
-	rb->fill_count += sizeof(struct quadd_record_data);
+	rb->fill_count += length;
 	return length;
 }
 
@@ -252,7 +252,10 @@ write_sample(struct quadd_record_data *sample,
 
 static ssize_t read_sample(char __user *buffer, size_t max_length)
 {
-	int retval = -EIO;
+	u32 sed;
+	unsigned int type;
+	int retval = -EIO, ip_size, bt_size;
+	int was_read = 0, write_offset = 0;
 	unsigned long flags;
 	struct quadd_ring_buffer *rb = &comm_ctx.rb;
 	struct quadd_record_data record;
@@ -272,10 +275,31 @@ static ssize_t read_sample(char __user *buffer, size_t max_length)
 	if (!rb_read(rb, (char *)&record, sizeof(record)))
 		goto out;
 
-	switch (record.record_type) {
+	was_read += sizeof(record);
+
+	type = record.record_type;
+
+	switch (type) {
 	case QUADD_RECORD_TYPE_SAMPLE:
 		sample = &record.sample;
-		length_extra = sample->callchain_nr * sizeof(quadd_bt_addr_t);
+
+		if (rb->fill_count < sizeof(sed))
+			goto out;
+
+		if (!rb_read(rb, (char *)&sed, sizeof(sed)))
+			goto out;
+
+		was_read += sizeof(sed);
+
+		ip_size = (sed & QUADD_SED_IP64) ?
+			sizeof(u64) : sizeof(u32);
+
+		bt_size = sample->callchain_nr;
+
+		length_extra = bt_size * ip_size;
+
+		if (bt_size > 0)
+			length_extra += DIV_ROUND_UP(bt_size, 8) * sizeof(u32);
 
 		nr_events = __sw_hweight32(sample->events_flags);
 		length_extra += nr_events * sizeof(u32);
@@ -284,7 +308,7 @@ static ssize_t read_sample(char __user *buffer, size_t max_length)
 		break;
 
 	case QUADD_RECORD_TYPE_MMAP:
-		length_extra = sizeof(u64);
+		length_extra = sizeof(u64) * 2;
 
 		if (record.mmap.filename_length > 0) {
 			length_extra += record.mmap.filename_length;
@@ -314,12 +338,16 @@ static ssize_t read_sample(char __user *buffer, size_t max_length)
 		length_extra = record.additional_sample.extra_length;
 		break;
 
+	case QUADD_RECORD_TYPE_SCHED:
+		length_extra = 0;
+		break;
+
 	default:
 		goto out;
 	}
 
-	if (sizeof(record) + length_extra > max_length) {
-		retval = rb_read_undo(rb, sizeof(record));
+	if (was_read + length_extra > max_length) {
+		retval = rb_read_undo(rb, was_read);
 		if (retval < 0)
 			goto out;
 
@@ -333,15 +361,26 @@ static ssize_t read_sample(char __user *buffer, size_t max_length)
 	if (copy_to_user(buffer, &record, sizeof(record)))
 		goto out_fault_error;
 
+	write_offset += sizeof(record);
+
+	if (type == QUADD_RECORD_TYPE_SAMPLE) {
+		if (copy_to_user(buffer + write_offset, &sed, sizeof(sed)))
+			goto out_fault_error;
+
+		write_offset += sizeof(sed);
+	}
+
 	if (length_extra > 0) {
-		retval = rb_read_user(rb, buffer + sizeof(record),
+		retval = rb_read_user(rb, buffer + write_offset,
 				      length_extra);
 		if (retval <= 0)
 			goto out;
+
+		write_offset += length_extra;
 	}
 
 	spin_unlock_irqrestore(&rb->lock, flags);
-	return sizeof(record) + length_extra;
+	return write_offset;
 
 out_fault_error:
 	retval = -EFAULT;
@@ -406,6 +445,20 @@ static int check_access_permission(void)
 	return 0;
 }
 
+static struct quadd_extabs_mmap *
+find_mmap(unsigned long vm_start)
+{
+	struct quadd_extabs_mmap *entry;
+
+	list_for_each_entry(entry, &comm_ctx.ext_mmaps, list) {
+		struct vm_area_struct *mmap_vma = entry->mmap_vma;
+		if (vm_start == mmap_vma->vm_start)
+			return entry;
+	}
+
+	return NULL;
+}
+
 static int device_open(struct inode *inode, struct file *file)
 {
 	mutex_lock(&comm_ctx.io_mutex);
@@ -454,7 +507,9 @@ device_read(struct file *filp,
 	    loff_t *offset)
 {
 	int err;
-	size_t was_read = 0, res, samples_counter = 0;
+	ssize_t res;
+	size_t samples_counter = 0;
+	size_t was_read = 0, min_size;
 
 	err = check_access_permission();
 	if (err)
@@ -467,7 +522,9 @@ device_read(struct file *filp,
 		return -EPIPE;
 	}
 
-	while (was_read + sizeof(struct quadd_record_data) < length) {
+	min_size = sizeof(struct quadd_record_data) + sizeof(u32);
+
+	while (was_read + min_size < length) {
 		res = read_sample(buffer + was_read, length - was_read);
 		if (res < 0) {
 			mutex_unlock(&comm_ctx.io_mutex);
@@ -495,12 +552,14 @@ device_ioctl(struct file *file,
 	     unsigned long ioctl_param)
 {
 	int err = 0;
+	unsigned long flags;
+	u64 *mmap_vm_start;
+	struct quadd_extabs_mmap *mmap;
 	struct quadd_parameters *user_params;
 	struct quadd_comm_cap cap;
 	struct quadd_module_state state;
 	struct quadd_module_version versions;
 	struct quadd_extables extabs;
-	unsigned long flags;
 	struct quadd_ring_buffer *rb = &comm_ctx.rb;
 
 	if (ioctl_num != IOCTL_SETUP &&
@@ -574,8 +633,8 @@ device_ioctl(struct file *file,
 		break;
 
 	case IOCTL_GET_VERSION:
-		strcpy(versions.branch, QUADD_MODULE_BRANCH);
-		strcpy(versions.version, QUADD_MODULE_VERSION);
+		strcpy((char *)versions.branch, QUADD_MODULE_BRANCH);
+		strcpy((char *)versions.version, QUADD_MODULE_VERSION);
 
 		versions.samples_version = QUADD_SAMPLES_VERSION;
 		versions.io_version = QUADD_IO_VERSION;
@@ -651,7 +710,20 @@ device_ioctl(struct file *file,
 			goto error_out;
 		}
 
-		err = comm_ctx.control->set_extab(&extabs);
+		mmap_vm_start = (u64 *)
+			&extabs.reserved[QUADD_EXT_IDX_MMAP_VM_START];
+
+		spin_lock(&comm_ctx.mmaps_lock);
+		mmap = find_mmap((unsigned long)*mmap_vm_start);
+		if (!mmap) {
+			pr_err("%s: error: mmap is not found\n", __func__);
+			err = -ENXIO;
+			spin_unlock(&comm_ctx.mmaps_lock);
+			goto error_out;
+		}
+
+		err = comm_ctx.control->set_extab(&extabs, mmap);
+		spin_unlock(&comm_ctx.mmaps_lock);
 		if (err) {
 			pr_err("error: set_extab\n");
 			goto error_out;
@@ -662,11 +734,130 @@ device_ioctl(struct file *file,
 		pr_err("error: ioctl %u is unsupported in this version of module\n",
 		       ioctl_num);
 		err = -EFAULT;
+		goto error_out;
 	}
 
 error_out:
 	mutex_unlock(&comm_ctx.io_mutex);
 	return err;
+}
+
+static void
+delete_mmap(struct quadd_extabs_mmap *mmap)
+{
+	struct quadd_extabs_mmap *entry, *next;
+
+	list_for_each_entry_safe(entry, next, &comm_ctx.ext_mmaps, list) {
+		if (entry == mmap) {
+			list_del(&entry->list);
+			vfree(entry->data);
+			kfree(entry);
+			break;
+		}
+	}
+}
+
+static void mmap_open(struct vm_area_struct *vma)
+{
+}
+
+static void mmap_close(struct vm_area_struct *vma)
+{
+	struct quadd_extabs_mmap *mmap;
+
+	pr_debug("mmap_close: vma: %#lx - %#lx\n",
+		 vma->vm_start, vma->vm_end);
+
+	spin_lock(&comm_ctx.mmaps_lock);
+
+	mmap = find_mmap(vma->vm_start);
+	if (!mmap) {
+		pr_err("%s: error: mmap is not found\n", __func__);
+		goto out;
+	}
+
+	comm_ctx.control->delete_mmap(mmap);
+	delete_mmap(mmap);
+
+out:
+	spin_unlock(&comm_ctx.mmaps_lock);
+}
+
+static int mmap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
+{
+	void *data;
+	struct quadd_extabs_mmap *mmap;
+	unsigned long offset = vmf->pgoff << PAGE_SHIFT;
+
+	pr_debug("mmap_fault: vma: %#lx - %#lx, pgoff: %#lx, vaddr: %p\n",
+		 vma->vm_start, vma->vm_end, vmf->pgoff, vmf->virtual_address);
+
+	spin_lock(&comm_ctx.mmaps_lock);
+
+	mmap = find_mmap(vma->vm_start);
+	if (!mmap) {
+		spin_unlock(&comm_ctx.mmaps_lock);
+		return VM_FAULT_SIGBUS;
+	}
+
+	data = mmap->data;
+
+	vmf->page = vmalloc_to_page(data + offset);
+	get_page(vmf->page);
+
+	spin_unlock(&comm_ctx.mmaps_lock);
+	return 0;
+}
+
+static struct vm_operations_struct mmap_vm_ops = {
+	.open	= mmap_open,
+	.close	= mmap_close,
+	.fault	= mmap_fault,
+};
+
+static int
+device_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	unsigned long vma_size, nr_pages;
+	struct quadd_extabs_mmap *entry;
+
+	pr_debug("mmap: vma: %#lx - %#lx, pgoff: %#lx\n",
+		 vma->vm_start, vma->vm_end, vma->vm_pgoff);
+
+	if (vma->vm_pgoff != 0)
+		return -EINVAL;
+
+	vma->vm_private_data = filp->private_data;
+
+	vma_size = vma->vm_end - vma->vm_start;
+	nr_pages = vma_size / PAGE_SIZE;
+
+	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry)
+		return -ENOMEM;
+
+	entry->mmap_vma = vma;
+
+	INIT_LIST_HEAD(&entry->list);
+	INIT_LIST_HEAD(&entry->ex_entries);
+
+	entry->data = vmalloc_user(nr_pages * PAGE_SIZE);
+	if (!entry->data) {
+		pr_err("%s: error: vmalloc_user", __func__);
+		kfree(entry);
+		return -ENOMEM;
+	}
+
+	spin_lock(&comm_ctx.mmaps_lock);
+	list_add_tail(&entry->list, &comm_ctx.ext_mmaps);
+	spin_unlock(&comm_ctx.mmaps_lock);
+
+	vma->vm_ops = &mmap_vm_ops;
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP;
+
+	vma->vm_ops->open(vma);
+
+	return 0;
 }
 
 static void unregister(void)
@@ -685,7 +876,9 @@ static const struct file_operations qm_fops = {
 	.poll		= device_poll,
 	.open		= device_open,
 	.release	= device_release,
-	.unlocked_ioctl	= device_ioctl
+	.unlocked_ioctl	= device_ioctl,
+	.compat_ioctl	= device_ioctl,
+	.mmap		= device_mmap,
 };
 
 static int comm_init(void)
@@ -706,6 +899,7 @@ static int comm_init(void)
 	res = misc_register(misc_dev);
 	if (res < 0) {
 		pr_err("Error: misc_register: %d\n", res);
+		kfree(misc_dev);
 		return res;
 	}
 	comm_ctx.misc_dev = misc_dev;
@@ -718,6 +912,9 @@ static int comm_init(void)
 	comm_ctx.nr_users = 0;
 
 	init_waitqueue_head(&comm_ctx.read_wait);
+
+	INIT_LIST_HEAD(&comm_ctx.ext_mmaps);
+	spin_lock_init(&comm_ctx.mmaps_lock);
 
 	return 0;
 }

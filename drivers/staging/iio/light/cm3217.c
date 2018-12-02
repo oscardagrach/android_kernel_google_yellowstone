@@ -20,6 +20,9 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/rtc.h>
 /* IT = Integration Time.  The amount of time the photons hit the sensor.
  * STEP = the value from HW which is the photon count during IT.
  * LUX = STEP * (CM3217_RESOLUTION_STEP / IT) / CM3217_RESOLUTION_DIVIDER
@@ -49,6 +52,22 @@
 #define CM3217_INPUT_LUX_FLAT		(0)
 #define CM3217_MAX_REGULATORS		(1)
 
+#define CM3217_RAW2LUX_500		(1628)
+#define CCI_FILE_PATH	""
+#define CCI_LIGHT_CALI_FILE_PATH	\
+		"/persist/lightsensor/light_sensor_cal.bin"
+#define CCI_LIGHT_TEST_FILE_PATH	\
+		"/persist/lightsensor/light_sensor_test.txt"
+
+#define CCI_DEBOUNCE			(10)
+#define CCI_CAL_TIMEOUT			(100)
+
+struct file *file;
+struct inode *inode;
+loff_t fsize;
+mm_segment_t old_fs;
+char read_buf[40];
+
 enum als_state {
 	CHIP_POWER_OFF,
 	CHIP_POWER_ON_ALS_OFF,
@@ -68,13 +87,13 @@ struct cm3217_inf {
 	struct regulator_bulk_data vreg[CM3217_MAX_REGULATORS];
 	int raw_illuminance_val;
 	int als_state;
+	unsigned int cal_data;
 };
 
 static int cm3217_i2c_rd(struct cm3217_inf *inf)
 {
 	struct i2c_msg msg[2];
 	__u8 buf[2];
-
 	msg[0].addr = CM3217_I2C_ADDR_RD + 1;
 	msg[0].flags = I2C_M_RD;
 	msg[0].len = 1;
@@ -111,114 +130,22 @@ static int cm3217_i2c_wr(struct cm3217_inf *inf, __u8 cmd1, __u8 cmd2)
 	return 0;
 }
 
-static int cm3217_cmd_wr(struct cm3217_inf *inf, __u8 it_t, __u8 fd_it)
+static int cm3217_cmd_wr(struct cm3217_inf *inf, __u8 it_t,
+		__u8 fd_it, int sd_mode)
 {
 	__u8 cmd1;
 	__u8 cmd2;
 	int err;
 
 	cmd1 = (CM3217_HW_CMD1_DFLT);
-	if (!inf->als_state)
+	/*
+	 * Shutdown mode, 0: Disable; 1: Enable.
+	 */
+	if (sd_mode)
 		cmd1 |= (1 << CM3217_HW_CMD1_BIT_SD);
 	cmd1 |= (it_t << CM3217_HW_CMD1_BIT_IT_T);
 	cmd2 = fd_it << CM3217_HW_CMD2_BIT_FD_IT;
 	err = cm3217_i2c_wr(inf, cmd1, cmd2);
-	return err;
-}
-
-static int cm3217_vreg_dis(struct cm3217_inf *inf, unsigned int i)
-{
-	int err = 0;
-
-	if (inf->vreg[i].ret && (inf->vreg[i].consumer != NULL)) {
-		err = regulator_disable(inf->vreg[i].consumer);
-		if (!err)
-			dev_dbg(&inf->i2c->dev, "%s %s\n",
-				__func__, inf->vreg[i].supply);
-		else
-			dev_err(&inf->i2c->dev, "%s %s ERR\n",
-				__func__, inf->vreg[i].supply);
-	}
-	inf->vreg[i].ret = 0;
-	return err;
-}
-
-static int cm3217_vreg_dis_all(struct cm3217_inf *inf)
-{
-	unsigned int i;
-	int err = 0;
-
-	for (i = CM3217_MAX_REGULATORS; i > 0; i--)
-		err |= cm3217_vreg_dis(inf, (i - 1));
-	return err;
-}
-
-static int cm3217_vreg_en(struct cm3217_inf *inf, unsigned int i)
-{
-	int err = 0;
-
-	if (!inf->vreg[i].ret && (inf->vreg[i].consumer != NULL)) {
-		err = regulator_enable(inf->vreg[i].consumer);
-		if (!err) {
-			inf->vreg[i].ret = 1;
-			dev_dbg(&inf->i2c->dev, "%s %s\n",
-				__func__, inf->vreg[i].supply);
-			err = 1; /* flag regulator state change */
-		} else {
-			dev_err(&inf->i2c->dev, "%s %s ERR\n",
-				__func__, inf->vreg[i].supply);
-		}
-	}
-	return err;
-}
-
-static int cm3217_vreg_en_all(struct cm3217_inf *inf)
-{
-	unsigned i;
-	int err = 0;
-
-	for (i = 0; i < CM3217_MAX_REGULATORS; i++)
-		err |= cm3217_vreg_en(inf, i);
-	return err;
-}
-
-static void cm3217_vreg_exit(struct cm3217_inf *inf)
-{
-	int i;
-
-	for (i = 0; i < CM3217_MAX_REGULATORS; i++) {
-		regulator_put(inf->vreg[i].consumer);
-		inf->vreg[i].consumer = NULL;
-	}
-}
-
-static int cm3217_vreg_init(struct cm3217_inf *inf)
-{
-	unsigned int i;
-	int err = 0;
-
-	/*
-	 * regulator names in order of powering on.
-	 * ARRAY_SIZE(cm3217_vregs) must be < CM3217_MAX_REGULATORS
-	 */
-	char *cm3217_vregs[] = {
-		"vdd",
-	};
-
-	for (i = 0; i < ARRAY_SIZE(cm3217_vregs); i++) {
-		inf->vreg[i].supply = cm3217_vregs[i];
-		inf->vreg[i].ret = 0;
-		inf->vreg[i].consumer = regulator_get(&inf->i2c->dev,
-							inf->vreg[i].supply);
-		if (IS_ERR(inf->vreg[i].consumer)) {
-			err = PTR_ERR(inf->vreg[i].consumer);
-			dev_err(&inf->i2c->dev, "%s err %d for %s\n",
-				__func__, err, inf->vreg[i].supply);
-			inf->vreg[i].consumer = NULL;
-		}
-	}
-	for (; i < CM3217_MAX_REGULATORS; i++)
-		inf->vreg[i].consumer = NULL;
 	return err;
 }
 
@@ -252,24 +179,8 @@ static ssize_t cm3217_chan_regulator_enable(struct device *dev,
 	if (enable == (inf->als_state != CHIP_POWER_OFF))
 		return 1;
 
-	if (!inf->vreg)
-		goto success;
-
-	if (enable)
-		ret = cm3217_vreg_en_all(inf);
-	else
-		ret = cm3217_vreg_dis_all(inf);
-
-	if (ret != enable) {
-		dev_err(&inf->i2c->dev,
-				"func:%s line:%d err:%d fails\n",
-				__func__, __LINE__, ret);
-		goto fail;
-	}
-
-success:
 	inf->als_state = enable;
-fail:
+
 	return ret ? ret : 1;
 }
 
@@ -280,9 +191,7 @@ static void cm3217_work(struct work_struct *ws)
 
 	inf = container_of(ws, struct cm3217_inf, dw.work);
 	indio_dev = iio_priv_to_dev(inf);
-	mutex_lock(&indio_dev->mlock);
 	cm3217_i2c_rd(inf);
-	mutex_unlock(&indio_dev->mlock);
 }
 
 static ssize_t cm3217_enable_show(struct device *dev,
@@ -294,6 +203,7 @@ static ssize_t cm3217_enable_show(struct device *dev,
 
 	if (inf->als_state == CHIP_POWER_ON_ALS_ON)
 		enable = 1;
+
 	return sprintf(buf, "%u\n", enable);
 }
 
@@ -317,10 +227,11 @@ static ssize_t cm3217_enable_store(struct device *dev,
 
 	mutex_lock(&indio_dev->mlock);
 	if (enable) {
-		err = cm3217_cmd_wr(inf, 0, 0);
+		err = cm3217_cmd_wr(inf, 0, 0, 0);
 		queue_delayed_work(inf->wq, &inf->dw, CM3217_HW_DELAY);
 	} else {
 		cancel_delayed_work_sync(&inf->dw);
+		err = cm3217_cmd_wr(inf, 0, 0, 1);
 	}
 	mutex_unlock(&indio_dev->mlock);
 	if (err)
@@ -336,15 +247,260 @@ static ssize_t cm3217_raw_illuminance_val_show(struct device *dev,
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct cm3217_inf *inf = iio_priv(indio_dev);
-
+	unsigned int cal_raw = -1;
 	if (inf->als_state != CHIP_POWER_ON_ALS_ON)
 		return sprintf(buf, "-1\n");
 	queue_delayed_work(inf->wq, &inf->dw, 0);
-	return sprintf(buf, "%d\n", inf->raw_illuminance_val);
+	if (inf->cal_data <= 0) {
+		return sprintf(buf, "%d\n", inf->raw_illuminance_val);
+	} else {
+		cal_raw = (inf->raw_illuminance_val *
+			CM3217_RAW2LUX_500) / inf->cal_data;
+		return sprintf(buf, "%u\n", cal_raw);
+	}
+}
+
+static int kernel_file_open(char *file_path, mode_t mode)
+{
+	file = filp_open(file_path, mode, 0777);
+	if (IS_ERR(file))
+		return -1;
+	return 0;
+}
+
+static loff_t kernel_file_size(struct file *file)
+{
+	if (file == NULL)
+		return 0;
+	inode = file->f_dentry->d_inode;
+	fsize = inode->i_size;
+	return fsize;
+}
+static int kernel_addr_limit_expend(void)
+{
+	old_fs = get_fs();
+	set_fs(get_ds());
+	return 0;
+}
+
+static int kernel_addr_limit_resume(void)
+{
+	set_fs(old_fs);
+	return 0;
+}
+
+void *kernel_file_read(struct file *file, loff_t fsize)
+{
+	loff_t pos = 0;
+	vfs_read(file, read_buf, sizeof(unsigned int), &pos);
+	return read_buf;
+}
+
+static ssize_t kernel_file_write(struct file *file, char *buf,
+		loff_t fsize, loff_t *pos)
+{
+	ssize_t err;
+	if (file == NULL)
+		return -1;
+	err = vfs_write(file, buf, fsize, pos);
+	return err;
+}
+
+static ssize_t cm3217_cci_cali_init_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct cm3217_inf *inf = iio_priv(indio_dev);
+	ssize_t err;
+	unsigned int *buf1;
+	err = kernel_file_open(CCI_LIGHT_CALI_FILE_PATH, O_RDONLY);
+	if (err == -1) {
+		dev_err(&inf->i2c->dev, "[#23]%s cannot find calibration data(%s)\n",
+			__func__, CCI_LIGHT_CALI_FILE_PATH);
+		goto err;
+	}
+	kernel_file_size(file);
+	kernel_addr_limit_expend();
+	buf1 = kernel_file_read(file, fsize);
+	inf->cal_data = *buf1;
+	filp_close(file, NULL);
+	kernel_addr_limit_resume();
+
+	if (inf->cal_data <= 0) {
+		dev_err(&inf->i2c->dev, "[#23]%s calibration data read error.\n",
+			__func__);
+		goto err;
+	} else {
+		dev_info(&inf->i2c->dev, "[#23] %s calibration data, value is %u.\n",
+			__func__, inf->cal_data);
+	}
+	return sprintf(buf, "0\n");
+err:
+	return sprintf(buf, "1\n");
+}
+
+static ssize_t cm3217_cci_cali_enable_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct cm3217_inf *inf = iio_priv(indio_dev);
+	unsigned int i, j;
+	unsigned int raw_avg = 0;
+	char buf1[10];
+	char buf2[40] = {'\0'};
+	ssize_t err;
+	ssize_t length;
+	loff_t *cali_pos;
+	loff_t log_pos;
+	struct timeval tv;
+	struct rtc_time tm;
+	int count = 0;
+	unsigned int raw_tmp[11] = {0};
+	bool success = true;
+
+	if (inf->als_state != CHIP_POWER_ON_ALS_ON) {
+		dev_err(&inf->i2c->dev, "[#23]%s ALS not enable, state is %d.\n",
+			__func__, inf->als_state);
+		return sprintf(buf, "0\n");
+	}
+
+	err = kernel_file_open(CCI_LIGHT_TEST_FILE_PATH, O_WRONLY|O_CREAT);
+	if (err == -1) {
+		dev_err(&inf->i2c->dev, "[#23]%s file open error. %s\n",
+			__func__, CCI_LIGHT_TEST_FILE_PATH);
+		return sprintf(buf, "0\n");
+	}
+	kernel_addr_limit_expend();
+
+	for (i = 0; i < 11; i++) {
+		count++;
+		for (j = i; j > 0; j--)
+			raw_tmp[j] = raw_tmp[j-1];
+
+		queue_delayed_work(inf->wq, &inf->dw, 0);
+		msleep(200);
+		raw_tmp[0] = inf->raw_illuminance_val;
+
+		do_gettimeofday(&tv);
+		rtc_time_to_tm(tv.tv_sec, &tm);
+		sprintf(buf2, "[%d-%d-%d %d:%d:%d] Cali(%d): %u\n",
+			tm.tm_year + 1900, tm.tm_mon, tm.tm_mday, tm.tm_hour,
+			tm.tm_min, tm.tm_sec, i, inf->raw_illuminance_val);
+		log_pos = kernel_file_size(file);
+		length = strlen(buf2);
+		err = kernel_file_write(file, buf2, length, &log_pos);
+		if (err < 0)
+			dev_info(&inf->i2c->dev, "[#23]%s write calibration log fail.\n",
+				__func__);
+
+		dev_info(&inf->i2c->dev, "[#23]%s raw_tmp[0]: %u(i = %d)\n",
+			__func__, raw_tmp[0], i);
+		if ((i == 0) || (raw_tmp[1] == 0)
+			|| (abs(raw_tmp[1] - raw_tmp[0]) <= CCI_DEBOUNCE)) {
+			break;
+		} else {
+			dev_info(&inf->i2c->dev, "[#23]%s calibration data drop!\n",
+				__func__);
+			memset(raw_tmp, 0, sizeof(raw_tmp));
+			i = 0;
+		}
+
+		if (count >= CCI_CAL_TIMEOUT) {
+			success = false;
+			dev_info(&inf->i2c->dev, "[#23]%s Calibration timeout!!!\n",
+				__func__);
+			break;
+		}
+	}
+	filp_close(file, NULL);
+	kernel_addr_limit_resume();
+	if (!success)
+		return sprintf(buf, "0\n");
+
+	for (i = 0; i < sizeof(raw_tmp)/sizeof(unsigned int) - 1; i++) {
+		dev_info(&inf->i2c->dev, "[#23]%s raw_tmp[%d]: %u\n",
+			__func__, i, raw_tmp[i]);
+		raw_avg += raw_tmp[i];
+	}
+
+	raw_avg /= (sizeof(raw_tmp)/sizeof(unsigned int) - 1);
+	inf->cal_data = raw_avg;
+	memcpy(buf1, &raw_avg, sizeof(unsigned int));
+	err = kernel_file_open(CCI_LIGHT_CALI_FILE_PATH, O_WRONLY|O_CREAT);
+	if (err == -1) {
+		dev_err(&inf->i2c->dev, "[#23]%s file open error. %s\n",
+			__func__, CCI_LIGHT_CALI_FILE_PATH);
+		return sprintf(buf, "0\n");
+	}
+	kernel_addr_limit_expend();
+	cali_pos = &(file->f_pos);
+	err = kernel_file_write(file, buf1, sizeof(raw_avg), cali_pos);
+	filp_close(file, NULL);
+	kernel_addr_limit_resume();
+	dev_info(&inf->i2c->dev, "[#23]%s raw_avg: %u, cal_data: %u\n",
+		    __func__, raw_avg, inf->cal_data);
+	if (err < 0)
+		return sprintf(buf, "0\n");
+	return sprintf(buf, "1\n");
+}
+
+static ssize_t cm3217_cci_test_enable_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct cm3217_inf *inf = iio_priv(indio_dev);
+	unsigned int cal_raw = -1;
+	char buf1[40] = {'\0'};
+	ssize_t err;
+	ssize_t length;
+	loff_t log_pos;
+	struct timeval tv;
+	struct rtc_time tm;
+
+	if (inf->als_state != CHIP_POWER_ON_ALS_ON) {
+		dev_err(&inf->i2c->dev, "[#23]%s ALS not enable, state is %d.\n",
+			__func__, inf->als_state);
+		return sprintf(buf, "-1\n");
+	}
+
+	if (inf->cal_data <= 0) {
+		dev_err(&inf->i2c->dev, "[#23]%s no calibration data.\n",
+			__func__);
+		return sprintf(buf, "%d\n", cal_raw);
+	}
+
+	queue_delayed_work(inf->wq, &inf->dw, 0);
+	cal_raw = (inf->raw_illuminance_val * CM3217_RAW2LUX_500)
+		/ inf->cal_data;
+	dev_info(&inf->i2c->dev, "[#23]%s cal_raw: %u, gain:%u\n",
+		    __func__, cal_raw, inf->cal_data);
+	/* Store test result */
+	err = kernel_file_open(CCI_LIGHT_TEST_FILE_PATH, O_WRONLY|O_CREAT);
+	if (err == -1) {
+		dev_err(&inf->i2c->dev, "[#23]%s file open error. %s\n",
+			__func__, CCI_LIGHT_TEST_FILE_PATH);
+		goto finished;
+	}
+	kernel_addr_limit_expend();
+	do_gettimeofday(&tv);
+	rtc_time_to_tm(tv.tv_sec, &tm);
+	sprintf(buf1, "[%d-%d-%d %d:%d:%d] Test: %u\n", tm.tm_year + 1900,
+			tm.tm_mon, tm.tm_mday, tm.tm_hour,
+			tm.tm_min, tm.tm_sec, cal_raw);
+	log_pos = kernel_file_size(file);
+	length = strlen(buf1);
+	err = kernel_file_write(file, buf1, length, &log_pos);
+	if (err < 0)
+		dev_info(&inf->i2c->dev, "[#23]%s write test result fail.\n",
+			__func__);
+	filp_close(file, NULL);
+	kernel_addr_limit_resume();
+finished:
+	return sprintf(buf, "%d\n", cal_raw);
 }
 
 static IIO_DEVICE_ATTR(in_illuminance_regulator_enable,
-			S_IRUGO | S_IWUSR | S_IWOTH,
+			S_IRUGO | S_IWUSR,
 			cm3217_chan_regulator_enable_show,
 			cm3217_chan_regulator_enable, 0);
 static IIO_DEVICE_ATTR(in_illuminance_enable,
@@ -352,6 +508,12 @@ static IIO_DEVICE_ATTR(in_illuminance_enable,
 			cm3217_enable_show, cm3217_enable_store, 0);
 static IIO_DEVICE_ATTR(in_illuminance_raw, S_IRUGO,
 		   cm3217_raw_illuminance_val_show, NULL, 0);
+static IIO_DEVICE_ATTR(cci_cali_init, S_IRUGO | S_IWUSR,
+		   cm3217_cci_cali_init_show, NULL, 0);
+static IIO_DEVICE_ATTR(cci_cali_enable, S_IRUGO | S_IWUSR,
+		   cm3217_cci_cali_enable_show, NULL, 0);
+static IIO_DEVICE_ATTR(cci_test_enable, S_IRUGO | S_IWUSR,
+		   cm3217_cci_test_enable_show, NULL, 0);
 static IIO_CONST_ATTR(vendor, "Capella");
 /* FD_IT = 000b, IT_TIMES = 1/2T i.e., 00b nano secs */
 static IIO_CONST_ATTR(in_illuminance_integration_time, "480000");
@@ -365,6 +527,9 @@ static struct attribute *cm3217_attrs[] = {
 	&iio_dev_attr_in_illuminance_enable.dev_attr.attr,
 	&iio_dev_attr_in_illuminance_regulator_enable.dev_attr.attr,
 	&iio_dev_attr_in_illuminance_raw.dev_attr.attr,
+	&iio_dev_attr_cci_cali_init.dev_attr.attr,
+	&iio_dev_attr_cci_cali_enable.dev_attr.attr,
+	&iio_dev_attr_cci_test_enable.dev_attr.attr,
 	&iio_const_attr_vendor.dev_attr.attr,
 	&iio_const_attr_in_illuminance_integration_time.dev_attr.attr,
 	&iio_const_attr_in_illuminance_max_range.dev_attr.attr,
@@ -391,12 +556,12 @@ static int cm3217_suspend(struct device *dev)
 	struct cm3217_inf *inf = iio_priv(indio_dev);
 	int ret = 0;
 
-	if (inf->als_state != CHIP_POWER_OFF)
-		ret = cm3217_vreg_dis_all(inf);
-
+	if (inf->als_state == CHIP_POWER_ON_ALS_ON)
+		ret = cm3217_cmd_wr(inf, 0, 0, 1);
 	if (ret)
 		dev_err(&client->adapter->dev,
-				"%s err in reg enable\n", __func__);
+				"%s err in cm3217 write\n", __func__);
+
 	return ret;
 }
 
@@ -407,17 +572,12 @@ static int cm3217_resume(struct device *dev)
 	struct cm3217_inf *inf = iio_priv(indio_dev);
 	int ret = 0;
 
-	if (inf->als_state != CHIP_POWER_OFF)
-		ret = cm3217_vreg_en_all(inf);
-
-	if (ret)
-		dev_err(&client->adapter->dev,
-				"%s err in reg enable\n", __func__);
 	if (inf->als_state == CHIP_POWER_ON_ALS_ON)
-		ret = cm3217_cmd_wr(inf, 0, 0);
+		ret = cm3217_cmd_wr(inf, 0, 0, 0);
 	if (ret)
 		dev_err(&client->adapter->dev,
 				"%s err in cm3217 write\n", __func__);
+
 	return ret;
 }
 
@@ -434,7 +594,6 @@ static int cm3217_remove(struct i2c_client *client)
 
 	indio_dev = i2c_get_clientdata(client);
 	inf = iio_priv(indio_dev);
-	cm3217_vreg_exit(inf);
 	destroy_workqueue(inf->wq);
 	iio_device_free(indio_dev);
 	dev_dbg(&client->adapter->dev, "%s\n", __func__);
@@ -480,14 +639,8 @@ static int cm3217_probe(struct i2c_client *client,
 		goto err_wq;
 	}
 
-	err = cm3217_vreg_init(inf);
-	if (err) {
-		dev_info(&client->dev,
-			"%s regulator init failed, assume always on", __func__);
-	}
-
 	INIT_DELAYED_WORK(&inf->dw, cm3217_work);
-	inf->als_state = 0;
+	inf->als_state = CHIP_POWER_ON_ALS_OFF;
 
 	dev_info(&client->dev, "%s success\n", __func__);
 	return 0;

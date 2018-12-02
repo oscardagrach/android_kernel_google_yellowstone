@@ -3113,7 +3113,7 @@ static const struct tegra_pingroup tegra124_groups[] = {
 	PINGROUP(pu1,			RSVD1,		UARTA,		GMI,		RSVD4,		RSVD4,		0x3188,  N,  N,  N),
 	PINGROUP(pu2,			RSVD1,		UARTA,		GMI,		RSVD4,		RSVD4,		0x318c,  N,  N,  N),
 	PINGROUP(pu3,			PWM0,		UARTA,		GMI,		DISPLAYB,	PWM0,		0x3190,  N,  N,  N),
-	PINGROUP(pu4,			PWM1,		UARTA,		GMI,		DISPLAYB,	PWM1,		0x3194,  N,  N,  N),
+	PINGROUP(pu4,			PWM1,		UARTA,		GMI,		DISPLAYB,	GMI,		0x3194,  N,  N,  N),
 	PINGROUP(pu5,			PWM2,		UARTA,		GMI,		DISPLAYB,	PWM2,		0x3198,  N,  N,  N),
 	PINGROUP(pu6,			PWM3,		UARTA,		RSVD3,		GMI,		RSVD3,		0x319c,  N,  N,  N),
 	PINGROUP(gen1_i2c_scl_pc4,	I2C1,		RSVD2,		RSVD3,		RSVD4,		I2C1,		0x31a0,  Y,  N,  N),

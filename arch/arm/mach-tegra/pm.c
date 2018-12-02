@@ -3,7 +3,7 @@
  *
  * CPU complex suspend & resume functions for Tegra SoCs
  *
- * Copyright (c) 2009-2014, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2009-2015, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1028,6 +1028,9 @@ static void tegra_suspend_wake(void)
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 	enable_irq(INT_SYS_STATS_MON);
 #endif
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+	console_enabled = true;
+#endif
 }
 
 static void tegra_pm_set(enum tegra_suspend_mode mode)
@@ -1068,11 +1071,17 @@ static void tegra_pm_set(enum tegra_suspend_mode mode)
 #if !defined(CONFIG_ARCH_TEGRA_3x_SOC) && !defined(CONFIG_ARCH_TEGRA_2x_SOC)
 #if defined(CONFIG_ARCH_TEGRA_11x_SOC) || defined(CONFIG_ARCH_TEGRA_12x_SOC)
 		writel(0x800fdfff, pmc + PMC_IO_DPD_REQ);
+		readl(pmc + PMC_IO_DPD_REQ); /* unblock posted write */
+
+		/* delay apb_clk * (SEL_DPD_TIM*5) */
+		udelay(700);
 		tegra_is_dpd_mode = true;
 #else
 		writel(0x800fffff, pmc + PMC_IO_DPD_REQ);
 #endif
 		writel(0x80001fff, pmc + PMC_IO_DPD2_REQ);
+		readl(pmc + PMC_IO_DPD2_REQ); /* unblock posted write */
+		udelay(700);
 #endif
 
 #ifdef CONFIG_ARCH_TEGRA_11x_SOC
@@ -1167,6 +1176,10 @@ static int tegra_suspend_enter(suspend_state_t state)
 	ktime_t delta;
 	struct timespec ts_entry, ts_exit;
 
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+	console_enabled = false;
+#endif
+
 	if (pdata && pdata->board_suspend)
 		pdata->board_suspend(current_suspend_mode, TEGRA_SUSPEND_BEFORE_PERIPHERAL);
 
@@ -1202,6 +1215,11 @@ static int tegra_suspend_enter(suspend_state_t state)
 abort_suspend:
 	if (pdata && pdata->board_resume)
 		pdata->board_resume(current_suspend_mode, TEGRA_RESUME_AFTER_PERIPHERAL);
+
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+	if (ret)
+		console_enabled = true;
+#endif
 
 	return ret;
 }

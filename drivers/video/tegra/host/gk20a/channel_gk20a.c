@@ -23,6 +23,7 @@
 #include <linux/highmem.h> /* need for nvmap.h*/
 #include <trace/events/nvhost.h>
 #include <linux/scatterlist.h>
+#include <linux/moduleparam.h>
 
 #include "dev.h"
 #include "nvhost_as.h"
@@ -40,6 +41,17 @@
 #include "chip_support.h"
 
 #define NVMAP_HANDLE_PARAM_SIZE 1
+
+static unsigned int low_priority = 512;
+static unsigned int medium_priority = 1024;
+static unsigned int high_priority = 2048;
+module_param(low_priority, uint, 0644);
+MODULE_PARM_DESC(low_priority, "Set timeslice in microseconds for low priority threads.");
+module_param(medium_priority, uint, 0644);
+MODULE_PARM_DESC(medium_priority, "Set timeslice in microseconds for medium priority threads.");
+module_param(high_priority, uint, 0644);
+MODULE_PARM_DESC(high_priority, "Set timeslice in microseconds for high priority threads.");
+
 
 static struct channel_gk20a *acquire_unused_channel(struct fifo_gk20a *f);
 static void release_used_channel(struct fifo_gk20a *f, struct channel_gk20a *c);
@@ -168,7 +180,7 @@ static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
 				u32 timeslice_timeout)
 {
 	void *inst_ptr;
-	int shift = 3;
+	int shift = 0;
 	int value = timeslice_timeout;
 
 	inst_ptr = c->inst_block.cpuva;
@@ -1993,16 +2005,13 @@ int gk20a_channel_set_priority(struct channel_gk20a *ch,
 	/* set priority of graphics channel */
 	switch (priority) {
 	case NVHOST_PRIORITY_LOW:
-		/* 64 << 3 = 512us */
-		timeslice_timeout = 64;
+		timeslice_timeout = low_priority;
 		break;
 	case NVHOST_PRIORITY_MEDIUM:
-		/* 128 << 3 = 1024us */
-		timeslice_timeout = 128;
+		timeslice_timeout = medium_priority;
 		break;
 	case NVHOST_PRIORITY_HIGH:
-		/* 255 << 3 = 2048us */
-		timeslice_timeout = 255;
+		timeslice_timeout = high_priority;
 		break;
 	default:
 		pr_err("Unsupported priority");

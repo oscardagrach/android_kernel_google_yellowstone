@@ -1,7 +1,7 @@
 /*
  * power_supply_extcon: Power supply detection through extcon.
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  * Laxman Dewangan <ldewangan@nvidia.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -20,7 +20,6 @@
  */
 
 #include <linux/delay.h>
-#include <linux/err.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -58,6 +57,9 @@ static struct power_supply_cables psy_cables[] = {
 		.name	= "TA",
 	},
 	{
+		.name	= "QC2",
+	},
+	{
 		.name	= "Fast-charger",
 	},
 	{
@@ -65,6 +67,9 @@ static struct power_supply_cables psy_cables[] = {
 	},
 	{
 		.name	= "Charge-downstream",
+	},
+	{
+		.name	= "Apple 500mA-charger",
 	},
 	{
 		.name	= "Apple 1A-charger",
@@ -135,12 +140,20 @@ static int power_supply_extcon_attach_cable(
 	} else if (true == extcon_get_cable_state(edev, "TA")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev, "USB TA cable detected\n");
+	} else if (true == extcon_get_cable_state(edev, "QC2")) {
+		psy_extcon->ac_online = 1;
+		dev_info(psy_extcon->dev, "USB QC2-charger cable detected\n");
 	} else if (true == extcon_get_cable_state(edev, "Fast-charger")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev, "USB Fast-charger cable detected\n");
 	} else if (true == extcon_get_cable_state(edev, "Slow-charger")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev, "USB Slow-charger cable detected\n");
+	} else if (true == extcon_get_cable_state(edev,
+						"Apple 500mA-charger")) {
+		psy_extcon->ac_online = 1;
+		dev_info(psy_extcon->dev,
+			"USB Apple 500mA-charger cable detected\n");
 	} else if (true == extcon_get_cable_state(edev, "Apple 1A-charger")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev,

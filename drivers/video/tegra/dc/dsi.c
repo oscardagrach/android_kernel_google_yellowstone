@@ -40,6 +40,7 @@
 #include <mach/dc.h>
 #include <mach/fb.h>
 #include <mach/csi.h>
+#include <mach/mipi-cal.h>
 
 #include "dc_reg.h"
 #include "dc_priv.h"
@@ -638,6 +639,7 @@ static void tegra_dsi_init_sw(struct tegra_dc *dc,
 	dsi->ulpm = false;
 	dsi->enabled = false;
 	dsi->clk_ref = false;
+	dev_info(&dsi->dc->ndev->dev, "%s:%d dsi->enabled=%d\n", __func__, __LINE__, dsi->enabled);
 
 	n_data_lanes = dsi->info.n_data_lanes;
 	if (dsi->info.ganged_type == TEGRA_DSI_GANGED_SYMMETRIC_LEFT_RIGHT ||
@@ -2078,10 +2080,28 @@ tegra_dsi_mipi_calibration_status(struct tegra_dc_dsi_data *dsi)
 }
 
 #ifdef CONFIG_ARCH_TEGRA_12x_SOC
+#define MIPI_LOCK_RETRY 2
 static void tegra_dsi_mipi_calibration_12x(struct tegra_dc_dsi_data *dsi)
 {
 	u32 val;
 	struct clk *clk72mhz = NULL;
+	int retry = MIPI_LOCK_RETRY;
+
+	dev_info(&dsi->dc->ndev->dev, "dsi: acquire mipi-cal lock\n");
+
+	do {
+		if (mipi_cal_trylock())
+			usleep_range(10, 100);
+		else
+			break;
+	} while (retry--);
+
+	if (retry < 0)
+		dev_warn(&dsi->dc->ndev->dev,
+			"dsi: mipi-cal not responding, force DSI calibration\n");
+	else if (retry < MIPI_LOCK_RETRY)
+		dev_warn(&dsi->dc->ndev->dev,
+			"dsi: waited for mipi-cal to be release\n");
 
 	clk72mhz = clk_get_sys("clk72mhz", NULL);
 	if (IS_ERR_OR_NULL(clk72mhz)) {
@@ -2198,6 +2218,8 @@ static void tegra_dsi_mipi_calibration_12x(struct tegra_dc_dsi_data *dsi)
 	}
 
 	clk_disable_unprepare(clk72mhz);
+
+	mipi_cal_unlock();
 }
 #endif
 
@@ -2427,8 +2449,10 @@ static int tegra_dsi_init_hw(struct tegra_dc *dc,
 	u32 i;
 	int err = 0;
 
-	if (dsi->avdd_dsi_csi)
+	if (dsi->avdd_dsi_csi) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI enable avdd_dsi_csi.\n", __func__, __LINE__);
 		err = regulator_enable(dsi->avdd_dsi_csi);
+	}
 	if (WARN(err, "unable to enable regulator"))
 		return err;
 	/* stablization delay */
@@ -3759,7 +3783,7 @@ static void tegra_dsi_send_dc_frames(struct tegra_dc *dc,
 		if (flag)
 			mutex_unlock(&dc->lock);
 		while (no_of_frames--)
-			tegra_dc_blank(dc);
+			tegra_dc_blank(dc, BLANK_ALL);
 		if (flag)
 			mutex_lock(&dc->lock);
 	} else
@@ -3779,8 +3803,10 @@ static void tegra_dsi_setup_initialized_panel(struct tegra_dc_dsi_data *dsi)
 {
 	int err = 0;
 
-	if (dsi->avdd_dsi_csi)
+	if (dsi->avdd_dsi_csi) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI enable avdd_dsi_csi.\n", __func__, __LINE__);
 		err = regulator_enable(dsi->avdd_dsi_csi);
+	}
 	WARN(err, "unable to enable regulator");
 
 	dsi->status.init = DSI_MODULE_INIT;
@@ -3814,6 +3840,7 @@ static void tegra_dsi_setup_initialized_panel(struct tegra_dc_dsi_data *dsi)
 	tegra_dsi_clk_enable(dsi);
 
 	dsi->enabled = true;
+	dev_info(&dsi->dc->ndev->dev, "%s:%d dsi->enabled=%d\n", __func__, __LINE__, dsi->enabled);
 }
 
 static void tegra_dc_dsi_enable(struct tegra_dc *dc)
@@ -3821,6 +3848,7 @@ static void tegra_dc_dsi_enable(struct tegra_dc *dc)
 	struct tegra_dc_dsi_data *dsi = tegra_dc_get_outdata(dc);
 	int err = 0;
 
+	dev_info(&dsi->dc->ndev->dev, "%s:%d ++\n", __func__, __LINE__);
 	mutex_lock(&dsi->lock);
 	tegra_dc_io_start(dc);
 
@@ -3916,6 +3944,7 @@ static void tegra_dc_dsi_enable(struct tegra_dc *dc)
 			tegra_dsi_pad_disable(dsi);
 
 		dsi->enabled = true;
+		dev_info(&dsi->dc->ndev->dev, "%s:%d dsi->enabled=%d\n", __func__, __LINE__, dsi->enabled);
 	}
 
 	if (dsi->out_ops && dsi->out_ops->enable)
@@ -3923,6 +3952,7 @@ static void tegra_dc_dsi_enable(struct tegra_dc *dc)
 fail:
 	tegra_dc_io_end(dc);
 	mutex_unlock(&dsi->lock);
+	dev_info(&dsi->dc->ndev->dev, "%s:%d --\n", __func__, __LINE__);
 }
 
 static void tegra_dc_dsi_postpoweron(struct tegra_dc *dc)
@@ -4552,8 +4582,10 @@ static int tegra_dsi_host_suspend(struct tegra_dc *dc)
 	int err = 0;
 	struct tegra_dc_dsi_data *dsi = tegra_dc_get_outdata(dc);
 
-	if (!dsi->enabled)
+	if (!dsi->enabled) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d DSI suspended%d\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	if (dsi->host_suspended)
 		return 0;
@@ -4612,8 +4644,10 @@ static int tegra_dsi_deep_sleep(struct tegra_dc *dc,
 	int val = 0;
 	int err = 0;
 
-	if (!dsi->enabled)
+	if (!dsi->enabled) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI suspended\n", __func__, __LINE__);
 		return 0;
+	}
 
 	tegra_dsi_bl_off(get_backlight_device_by_name(dsi->info.bl_name));
 
@@ -4665,6 +4699,7 @@ static int tegra_dsi_deep_sleep(struct tegra_dc *dc,
 
 	dsi->enabled = false;
 	dsi->host_suspended = true;
+	dev_info(&dsi->dc->ndev->dev, "%s:%d dsi->enabled=%d\n", __func__, __LINE__, dsi->enabled);
 
 	return 0;
 fail:
@@ -4674,9 +4709,13 @@ fail:
 static void tegra_dc_dsi_postpoweroff(struct tegra_dc *dc)
 {
 	struct tegra_dc_dsi_data *dsi = tegra_dc_get_outdata(dc);
+	int err = 0;
 
-	if (!dsi->enabled)
-		regulator_disable(dsi->avdd_dsi_csi);
+	if (!dsi->enabled) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI disable avdd_dsi_csi.\n", __func__, __LINE__);
+		err = regulator_disable(dsi->avdd_dsi_csi);
+	}
+	WARN(err, "DSI: unable to disable regulator avdd_dsi_csi");
 }
 
 static int tegra_dsi_host_resume(struct tegra_dc *dc)
@@ -4684,8 +4723,10 @@ static int tegra_dsi_host_resume(struct tegra_dc *dc)
 	int err = 0;
 	struct tegra_dc_dsi_data *dsi = tegra_dc_get_outdata(dc);
 
-	if (!dsi->enabled)
+	if (!dsi->enabled) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI suspended\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	cancel_delayed_work(&dsi->idle_work);
 
@@ -4771,8 +4812,10 @@ static void tegra_dc_dsi_suspend(struct tegra_dc *dc)
 
 	dsi = tegra_dc_get_outdata(dc);
 
-	if (!dsi->enabled)
+	if (!dsi->enabled) {
+		dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI suspended.\n", __func__, __LINE__);
 		return;
+	}
 
 	if (dsi->host_suspended)
 		tegra_dsi_host_resume(dc);
@@ -4832,6 +4875,7 @@ static int tegra_dc_dsi_init(struct tegra_dc *dc)
 
 	dsi = tegra_dc_get_outdata(dc);
 
+	dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI regulator_get avdd_dsi_csi.\n", __func__, __LINE__);
 	dsi->avdd_dsi_csi =  regulator_get(&dc->ndev->dev, "avdd_dsi_csi");
 	if (IS_ERR_OR_NULL(dsi->avdd_dsi_csi)) {
 		dev_err(&dc->ndev->dev, "dsi: avdd_dsi_csi reg get failed\n");
@@ -4847,6 +4891,7 @@ static int tegra_dc_dsi_init(struct tegra_dc *dc)
 	}
 	return 0;
 err_mipi:
+	dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI release avdd_dsi_csi.\n", __func__, __LINE__);
 	regulator_put(dsi->avdd_dsi_csi);
 err_reg:
 	_tegra_dc_dsi_destroy(dc);
@@ -4863,6 +4908,7 @@ static void tegra_dc_dsi_destroy(struct tegra_dc *dc)
 	avdd_dsi_csi = dsi->avdd_dsi_csi;
 
 	_tegra_dc_dsi_destroy(dc);
+	dev_info(&dsi->dc->ndev->dev, "%s:%d: DSI release avdd_dsi_csi.\n", __func__, __LINE__);
 	regulator_put(avdd_dsi_csi);
 	tegra_mipi_cal_destroy(dc);
 }

@@ -36,4 +36,6 @@
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
 #define N_PHONET   25  /* PHONET */
 
+#define N_SHUB      26 /* sensorhub */
+
 #endif /* _UAPI_LINUX_TTY_H */

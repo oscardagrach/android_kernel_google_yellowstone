@@ -25,7 +25,7 @@
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
-
+#define CONFIG_PANIC_TIMEOUT 5
 /* Machine specific panic information string */
 char *mach_panic_string;
 
@@ -145,6 +145,7 @@ void panic(const char *fmt, ...)
 		printk(KERN_EMERG "Rebooting in %d seconds..", panic_timeout);
 
 		for (i = 0; i < panic_timeout * 1000; i += PANIC_TIMER_STEP) {
+			pr_emerg("Count %d times..", i);
 			touch_nmi_watchdog();
 			if (i >= i_next) {
 				i += panic_blink(state ^= 1);

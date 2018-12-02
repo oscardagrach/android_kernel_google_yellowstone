@@ -44,6 +44,22 @@ int nvhost_vi_init(struct platform_device *dev)
 	int ret = 0;
 	struct vi *tegra_vi = nvhost_get_private_data(dev);
 
+	tegra_vi->sreg = regulator_get(&dev->dev, "vddio_cam");
+	if (IS_ERR(tegra_vi->sreg)) {
+		if (tegra_vi->sreg == ERR_PTR(-ENODEV)) {
+			ret = -ENODEV;
+			dev_info(&dev->dev,
+				 "%s: no regulator for VDDIO_CAM\n",
+				 __func__);
+		} else {
+			dev_err(&dev->dev,
+				"%s: couldn't get regulator for VDDIO_CAM\n",
+				__func__);
+		}
+		tegra_vi->sreg = NULL;
+		return ret;
+	}
+
 	tegra_vi->reg = regulator_get(&dev->dev, "avdd_dsi_csi");
 	if (IS_ERR(tegra_vi->reg)) {
 		if (tegra_vi->reg == ERR_PTR(-ENODEV)) {
@@ -57,6 +73,11 @@ int nvhost_vi_init(struct platform_device *dev)
 					__func__);
 		}
 		tegra_vi->reg = NULL;
+
+		/* put the sreg regulator obtained above */
+		regulator_put(tegra_vi->sreg);
+		tegra_vi->sreg = NULL;
+
 		return ret;
 	}
 
@@ -70,6 +91,11 @@ void nvhost_vi_deinit(struct platform_device *dev)
 	if (tegra_vi->reg) {
 		regulator_put(tegra_vi->reg);
 		tegra_vi->reg = NULL;
+	}
+
+	if (tegra_vi->sreg) {
+		regulator_put(tegra_vi->sreg);
+		tegra_vi->sreg = NULL;
 	}
 }
 
@@ -86,13 +112,24 @@ int nvhost_vi_finalize_poweron(struct platform_device *dev)
 	}
 
 	tegra_vi = (struct vi *)nvhost_get_private_data(dev);
+
+	if (tegra_vi->sreg) {
+		ret = regulator_enable(tegra_vi->sreg);
+		if (ret) {
+			dev_err(&dev->dev,
+					"%s: enable VDDIO_CAM regulator failed.\n",
+					__func__);
+			goto fail;
+		}
+	}
+
 	if (tegra_vi->reg) {
 		ret = regulator_enable(tegra_vi->reg);
 		if (ret) {
 			dev_err(&dev->dev,
 					"%s: enable csi regulator failed.\n",
 					__func__);
-			goto fail;
+			goto fail1;
 		}
 	}
 
@@ -100,13 +137,15 @@ int nvhost_vi_finalize_poweron(struct platform_device *dev)
 	if (dev_id == 0)
 		host1x_writel(dev, T12_VI_CFG_CG_CTRL, T12_CG_2ND_LEVEL_EN);
 
+ fail1:
+	regulator_disable(tegra_vi->sreg);
  fail:
 	return ret;
 }
 
 int nvhost_vi_prepare_poweroff(struct platform_device *dev)
 {
-	int ret = 0;
+	int ret = 0, ret1 = 0;
 	struct vi *tegra_vi;
 	tegra_vi = (struct vi *)nvhost_get_private_data(dev);
 
@@ -116,11 +155,19 @@ int nvhost_vi_prepare_poweroff(struct platform_device *dev)
 			dev_err(&dev->dev,
 				"%s: disable csi regulator failed.\n",
 				__func__);
-			goto fail;
 		}
 	}
- fail:
-	return ret;
+
+	if (tegra_vi->sreg) {
+		ret1 = regulator_disable(tegra_vi->sreg);
+		if (ret1) {
+			dev_err(&dev->dev,
+				"%s: disable VDDIO_CAM regulator failed.\n",
+				__func__);
+		}
+	}
+
+	return ret ? ret : ret1;
 }
 
 #if defined(CONFIG_TEGRA_ISOMGR)

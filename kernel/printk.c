@@ -45,6 +45,7 @@
 #include <linux/poll.h>
 #include <linux/irq_work.h>
 #include <linux/utsname.h>
+#include <linux/rtc.h>
 
 #include <asm/uaccess.h>
 
@@ -875,6 +876,9 @@ module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
 static size_t print_time(u64 ts, char *buf)
 {
 	unsigned long rem_nsec;
+	struct rtc_time tm;
+	struct timespec now;
+	extern struct timezone sys_tz;
 
 	if (!printk_time)
 		return 0;
@@ -884,8 +888,15 @@ static size_t print_time(u64 ts, char *buf)
 	if (!buf)
 		return snprintf(NULL, 0, "[%5lu.000000] ", (unsigned long)ts);
 
-	return sprintf(buf, "[%5lu.%06lu] ",
-		       (unsigned long)ts, rem_nsec / 1000);
+	now = current_kernel_time();
+	/* Add timezone */
+	now.tv_sec -= (sys_tz.tz_minuteswest * 60);
+	/* Converts seconds to Gregorian date */
+	rtc_time_to_tm(now.tv_sec, &tm);
+
+	return sprintf(buf, "[%02d-%02d %02d:%02d:%02d.%03ld] ",
+		tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, now.tv_nsec / 1000000);
 }
 
 static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
@@ -1329,6 +1340,9 @@ static int have_callable_console(void)
 	return 0;
 }
 
+bool console_enabled = 1;
+EXPORT_SYMBOL(console_enabled);
+
 /*
  * Can we actually use the console at this time on this cpu?
  *
@@ -1339,7 +1353,7 @@ static int have_callable_console(void)
  */
 static inline int can_use_console(unsigned int cpu)
 {
-	return cpu_online(cpu) || have_callable_console();
+	return console_enabled && (cpu_online(cpu) || have_callable_console());
 }
 
 /*

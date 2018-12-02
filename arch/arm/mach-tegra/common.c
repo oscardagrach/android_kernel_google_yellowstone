@@ -89,6 +89,8 @@
 
 #define   RECOVERY_MODE	BIT(31)
 #define   BOOTLOADER_MODE	BIT(30)
+#define   CCI_T2_MODE	BIT(29)
+#define   CCI_T1_MODE	BIT(28)
 #define   FORCED_RECOVERY_MODE	BIT(1)
 
 #define AHB_GIZMO_USB		0x1c
@@ -242,7 +244,10 @@ void tegra_assert_system_reset(char mode, const char *cmd)
 	}
 
 	reg = readl_relaxed(reset + PMC_SCRATCH0);
-	/* Writing recovery kernel or Bootloader mode in SCRATCH0 31:30:1 */
+	/*
+	 * Writing recovery/cci_t1/cci_t2 kernel or Bootloader mode in
+	 * SCRATCH0 31:30:29:28:1
+	 */
 	if (cmd) {
 		if (!strcmp(cmd, "recovery"))
 			reg |= RECOVERY_MODE;
@@ -250,14 +255,21 @@ void tegra_assert_system_reset(char mode, const char *cmd)
 			reg |= BOOTLOADER_MODE;
 		else if (!strcmp(cmd, "forced-recovery"))
 			reg |= FORCED_RECOVERY_MODE;
+		else if (!strcmp(cmd, "cci_t1"))
+			reg |= CCI_T1_MODE;
+		else if (!strcmp(cmd, "cci_t2"))
+			reg |= CCI_T2_MODE;
 		else {
-			reg &= ~(BOOTLOADER_MODE | RECOVERY_MODE | FORCED_RECOVERY_MODE);
+			reg &= ~(BOOTLOADER_MODE | RECOVERY_MODE |
+				 FORCED_RECOVERY_MODE | CCI_T1_MODE |
+				 CCI_T2_MODE);
 			empty_command = true;
 		}
 	}
 	else {
-		/* Clearing SCRATCH0 31:30:1 on default reboot */
-		reg &= ~(BOOTLOADER_MODE | RECOVERY_MODE | FORCED_RECOVERY_MODE);
+		/* Clearing SCRATCH0 31:30:29:28:1 on default reboot */
+		reg &= ~(BOOTLOADER_MODE | RECOVERY_MODE |
+			 FORCED_RECOVERY_MODE | CCI_T1_MODE | CCI_T2_MODE);
 	}
 	writel_relaxed(reg, reset + PMC_SCRATCH0);
 	if ((!cmd || empty_command) && pm_power_reset) {
@@ -469,6 +481,8 @@ static __initdata struct tegra_clk_init_table tegra12x_clk_init_table[] = {
 	{ "tsensor",	"clk_m",	500000,		false },
 #endif
 	{ "pll_d",	NULL,		0,		true },
+	{ "dsialp",	"pll_p",	70000000,	false },
+	{ "dsiblp",	"pll_p",	70000000,	false },
 	{ NULL,		NULL,		0,		0},
 };
 static __initdata struct tegra_clk_init_table tegra12x_cbus_init_table[] = {
@@ -883,7 +897,6 @@ void __init tegra20_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 #endif
 #ifdef CONFIG_ARCH_TEGRA_3x_SOC
@@ -930,7 +943,6 @@ void __init tegra30_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 
 	init_dma_coherent_pool_size(SZ_1M);
 }
@@ -1026,7 +1038,6 @@ void __init tegra14x_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 #endif
 static int __init tegra_lp0_vec_arg(char *options)
@@ -1396,6 +1407,24 @@ static int __init tegra_audio_codec_type(char *info)
 
 	return 1;
 }
+
+static int __init cci_hw_id_from_cmdline(char *cci_hwid)
+{
+	sscanf(cci_hwid, "%d", &cci_hw_id);
+	printk("Read CCI_HWID =%d from_cmdline!!\n",cci_hw_id);
+
+	return 1;
+}
+__setup("androidboot.ccihwid=", cci_hw_id_from_cmdline);
+
+static int __init cci_boot_mode_from_cmdline(char *cci_boot_mode)
+{
+	sscanf(cci_boot_mode, "%d", &ccibootmode);
+	printk("Read cci_boot_mode =%d from_cmdline!!\n",ccibootmode);
+
+	return 1;
+}
+__setup("androidboot.ccimode=", cci_boot_mode_from_cmdline);
 
 enum audio_codec_type get_audio_codec_type(void)
 {
@@ -1837,6 +1866,38 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 	iounmap(to_io);
 }
 
+#ifdef CONFIG_PSTORE_RAM
+static struct ramoops_platform_data ramoops_data;
+
+static struct platform_device ramoops_dev  = {
+	.name = "ramoops",
+	.dev = {
+		.platform_data = &ramoops_data,
+	},
+};
+
+
+static void __init tegra_reserve_ramoops_memory(unsigned long reserve_size)
+{
+	ramoops_data.mem_size = reserve_size;
+	ramoops_data.mem_address = memblock_end_of_4G() - reserve_size;
+	ramoops_data.console_size = reserve_size;
+	ramoops_data.dump_oops = 1;
+	memblock_reserve(ramoops_data.mem_address, ramoops_data.mem_size);
+}
+
+static int __init tegra_register_ramoops_device(void)
+{
+	int ret = platform_device_register(&ramoops_dev);
+	if (ret) {
+		pr_info("Unable to register ramoops platform device\n");
+		return ret;
+	}
+	return ret;
+}
+core_initcall(tegra_register_ramoops_device);
+#endif
+
 void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 	unsigned long fb2_size)
 {
@@ -2128,6 +2189,9 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 #endif
 
 	tegra_fb_linear_set(map);
+#ifdef CONFIG_PSTORE_RAM
+	tegra_reserve_ramoops_memory(SZ_1M);
+#endif
 }
 
 void tegra_get_fb_resource(struct resource *fb_res)
@@ -2143,37 +2207,6 @@ void tegra_get_fb2_resource(struct resource *fb2_res)
 	fb2_res->end = fb2_res->start +
 			(resource_size_t) tegra_fb2_size - 1;
 }
-
-#ifdef CONFIG_PSTORE_RAM
-static struct persistent_ram_descriptor desc = {
-	.name = "ramoops",
-};
-
-static struct persistent_ram ram = {
-	.descs = &desc,
-	.num_descs = 1,
-};
-
-void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
-{
-	int ret;
-
-	ram.start = memblock_end_of_DRAM() - ram_console_size;
-	ram.size = ram_console_size;
-	ram.descs->size = ram_console_size;
-
-	INIT_LIST_HEAD(&ram.node);
-
-	ret = persistent_ram_early_init(&ram);
-	if (ret)
-		goto fail;
-
-	return;
-
-fail:
-	pr_err("Failed to reserve memory block for ram console\n");
-}
-#endif
 
 int __init tegra_register_fuse(void)
 {

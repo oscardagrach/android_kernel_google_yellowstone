@@ -37,13 +37,15 @@
 #define BQ2477X_CHARGE_CURRENT_LSB		0x0A
 #define BQ2477X_CHARGE_CURRENT_MSB		0x0B
 #define BQ2477X_MAX_CHARGE_VOLTAGE_LSB		0x0C
-#define BQ2477X_MAX_CHARGE_VOLTAGE_MSB		0x0C
+#define BQ2477X_MAX_CHARGE_VOLTAGE_MSB		0x0D
 #define BQ2477X_MIN_SYS_VOLTAGE			0x0E
 #define BQ2477X_INPUT_CURRENT			0x0F
-#define BQ2477X_DEVICE_ID_REG			0x09
+#define BQ2477X_DEVICE_ADDR_REG			0x09
 
-#define BQ24770_DEVICE_ID			0x14
-#define BQ24773_DEVICE_ID			0x40
+#define BQ24770_DEVICE_ID_PG_1_0		0x14
+#define BQ24770_DEVICE_ID_PG_1_1		0x114
+#define BQ24773_DEVICE_ID_PG_1_0		0x40
+#define BQ24773_DEVICE_ID_PG_1_1		0x41
 
 #define BQ2477X_CHARGE_OPTION_POR_LSB		0x0E
 #define BQ2477X_CHARGE_OPTION_POR_MSB		0x81
@@ -55,17 +57,37 @@
 
 #define BQ2477X_ENABLE_CHARGE_MASK		BIT(0)
 #define BQ2477X_WATCHDOG_TIMER			0x60
+#define BQ2477X_CHARGE_ENABLE			0x01
+#define BQ2477X_LEARN_MODE 		0x20
 
-#define BQ2477X_MAX_REGS			(BQ2477X_DEVICE_ID_REG + 1)
+
+#define BQ2477X_MAX_REGS			(BQ2477X_DEVICE_ADDR_REG + 1)
+
+struct bq2477x_charge_zone {
+	int min_temp;
+	int max_temp;
+	int charge_voltage;
+	int charge_current;
+};
 
 struct bq2477x_platform_data {
 	int     irq;
 	int     dac_ctrl;
-	int     dac_ichg;
 	int     dac_v;
 	int     dac_minsv;
-	int     dac_iin;
 	int     wdt_refresh_timeout;
-	int     gpio;
+	int	acok_gpio;
+	int     dock_12v_gpio;
+	int     dock_12v_gpio_active_high;
+	int	dock_usb3_gpio;
+	int	dock_usb3_active_high;
+	int	dock_max_ua;
+	int	disable_vbus_12v_boost_gpio;
+	int	max_charge_ua;
+	char	*extcon_dock_name;
+	int	num_consumer_supplies;
+	struct	regulator_consumer_supply *consumer_supplies;
+	u32	*chg_current_limit;
+	const struct  bq2477x_charge_zone *charge_table;
 };
 #endif /* __LINUX_POWER_BQ2477X_CHARGER_H */

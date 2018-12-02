@@ -38,6 +38,7 @@
 #include <linux/memblock.h>
 #include <linux/spi/spi-tegra.h>
 #include <linux/nfc/pn544.h>
+#include <linux/nfc/bcm2079x.h>
 #include <linux/rfkill-gpio.h>
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -64,6 +65,7 @@
 #include <linux/platform_data/tegra_usb_modem_power.h>
 #include <linux/platform_data/tegra_ahci.h>
 #include <linux/irqchip/tegra.h>
+#include <misc/sh-ldisc.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -93,8 +95,94 @@
 #include "pm.h"
 #include "tegra-board-id.h"
 #include "tegra-of-dev-auxdata.h"
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+
+int cci_hw_id = 0;
+int ccibootmode = 0;
 
 static struct board_info board_info, display_board_info;
+
+/**
+ * get_cci_hw_id - Get hardware phase index
+ *
+ */
+int get_cci_hw_id(void)
+{
+    return cci_hw_id;
+}
+
+/**
+ * get_cci_hw_id_string - Map hardware phase index to string
+ *
+ */
+char *get_cci_hw_id_string(void)
+{
+    switch (get_cci_hw_id()){
+    case EVT:
+        return "EVT";
+        break;
+    case DVT_DEMO:
+        return "DVT_DEMO";
+        break;
+    case DVT1_1:
+        return "DVT1_1";
+        break;
+    case DVT1_2:
+        return "DVT1_2";
+        break;
+    case DVT2:
+        return "DVT2";
+        break;
+    case DVT3:
+        return "DVT3";
+        break;
+    case PVT:
+        return "PVT";
+        break;
+    default:
+        return "HWID_INVALID";
+        break;
+    }
+}
+
+/**
+ * cci_hwid_show - Callback function for sysfs node /proc/CCI_HW_ID.
+ *
+ */
+static int cci_hwid_show(struct seq_file *m, void *v)
+{
+
+    switch(cci_hw_id) {
+        case EVT:
+            seq_printf(m, "%s\n", "EVT");
+            break;
+        case DVT_DEMO:
+            seq_printf(m, "%s\n", "DVT_DEMO");
+            break;
+        case DVT1_1:
+            seq_printf(m, "%s\n", "DVT1_1");
+            break;
+        case DVT1_2:
+            seq_printf(m, "%s\n", "DVT1_2");
+            break;
+        case DVT2:
+            seq_printf(m, "%s\n", "DVT2");
+            break;
+        case DVT3:
+            seq_printf(m, "%s\n", "DVT3");
+            break;
+        case PVT:
+            seq_printf(m, "%s\n", "PVT");
+            break;
+        default:
+            seq_printf(m, "%s\n", "HWID_INVALID");
+            printk("Got an invalid HWIID %d\n", cci_hw_id);
+            break;
+    }
+
+    return 0;
+}
 
 static struct resource ardbeg_bluedroid_pm_resources[] = {
 	[0] = {
@@ -119,12 +207,6 @@ static struct resource ardbeg_bluedroid_pm_resources[] = {
 		.end    = TEGRA_GPIO_PU6,
 		.flags  = IORESOURCE_IO,
 	},
-	[4] = {
-		.name = "reset_gpio",
-		.start  = TEGRA_GPIO_PX1,
-		.end    = TEGRA_GPIO_PX1,
-		.flags  = IORESOURCE_IO,
-	},
 };
 
 static struct platform_device ardbeg_bluedroid_pm_device = {
@@ -143,7 +225,7 @@ static noinline void __init ardbeg_setup_bluedroid_pm(void)
 }
 
 static struct i2c_board_info __initdata rt5639_board_info = {
-	I2C_BOARD_INFO("rt5639", 0x1c),
+	I2C_BOARD_INFO("rt5640", 0x1c),
 };
 
 static __initdata struct tegra_clk_init_table ardbeg_clk_init_table[] = {
@@ -190,6 +272,21 @@ static __initdata struct tegra_clk_init_table ardbeg_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
+static struct bcm2079x_platform_data nfc_pdata = {
+    /* Map to NFC_I2C_REQ */
+	.irq_gpio = TEGRA_GPIO_PR4,
+    /* Map to NFC_REG_PU */
+	.en_gpio = TEGRA_GPIO_PX6,
+    /* Map to NFC_WAKE */
+	.wake_gpio = TEGRA_GPIO_PS5,
+};
+
+/* BCM2079X NFC I2C Board Info */
+static struct i2c_board_info __initdata i2c_nfc_board_info = {
+	I2C_BOARD_INFO("bcm2079x-i2c", 0x77),
+	.platform_data = &nfc_pdata,
+};
+
 static struct i2c_hid_platform_data i2c_keyboard_pdata = {
 	.hid_descriptor_address = 0x0,
 };
@@ -208,13 +305,13 @@ static struct i2c_board_info __initdata i2c_touchpad_board_info = {
 	.platform_data  = &i2c_touchpad_pdata,
 };
 
+
 static void ardbeg_i2c_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
 
 	i2c_register_board_info(0, &rt5639_board_info, 1);
-
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363) {
@@ -223,6 +320,22 @@ static void ardbeg_i2c_init(void)
 
 		i2c_touchpad_board_info.irq = gpio_to_irq(I2C_TP_IRQ);
 		i2c_register_board_info(1, &i2c_touchpad_board_info , 1);
+	}
+
+	switch (get_cci_hw_id()) {
+	case HWID_INVALID:
+	case EVT:
+	case DVT_DEMO:
+	case DVT1_1:
+	case DVT1_2:
+		break;
+	case DVT2:
+	case DVT3:
+	case PVT:
+	default:
+		i2c_nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PR4);
+		i2c_register_board_info(0, &i2c_nfc_board_info, 1);
+		break;
 	}
 }
 
@@ -317,18 +430,18 @@ static void ardbeg_audio_init(void)
 		} else {
 			ardbeg_audio_pdata_rt5639.gpio_hp_det =
 				TEGRA_GPIO_HP_DET;
-			ardbeg_audio_pdata_rt5639.use_codec_jd_irq = false;
+			ardbeg_audio_pdata_rt5639.use_codec_jd_irq = true;
 		}
-		ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high = 0;
+		ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high = 1;
 		ardbeg_audio_pdata_rt5639.gpio_ldo1_en = TEGRA_GPIO_LDO_EN;
 	}
 
-	ardbeg_audio_pdata_rt5639.codec_name = "rt5639.0-001c";
-	ardbeg_audio_pdata_rt5639.codec_dai_name = "rt5639-aif1";
+	ardbeg_audio_pdata_rt5639.codec_name = "rt5640.0-001c";
+	ardbeg_audio_pdata_rt5639.codec_dai_name = "rt5640-aif1";
 }
 
 static struct platform_device ardbeg_audio_device_rt5639 = {
-	.name = "tegra-snd-rt5639",
+	.name = "tegra-snd-rt5640",
 	.id = 0,
 	.dev = {
 		.platform_data = &ardbeg_audio_pdata_rt5639,
@@ -548,16 +661,121 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	},
 };
 
-static struct gpio modem_gpios[] = { /* Bruce modem */
+/* Enhance USB phy driving strength */
+static struct tegra_usb_platform_data tegra_udc_en_pdata = {
+	.port_otg = true,
+	.has_hostpc = true,
+	.unaligned_dma_buf_supported = false,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
+	.op_mode = TEGRA_USB_OPMODE_DEVICE,
+	.u_data.dev = {
+		.vbus_pmu_irq = 0,
+		.vbus_gpio = -1,
+		.charging_supported = false,
+		.remote_wakeup_supported = false,
+	},
+	.u_cfg.utmi = {
+		.hssync_start_delay = 0,
+		.elastic_limit = 16,
+		.idle_wait_delay = 17,
+		.term_range_adj = 6,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.xcvr_setup_offset = 0,
+		.xcvr_use_fuses = 1,
+	},
+};
+
+static struct tegra_usb_platform_data tegra_ehci1_utmi_en_pdata = {
+	.port_otg = true,
+	.has_hostpc = true,
+	.unaligned_dma_buf_supported = true,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
+	.op_mode = TEGRA_USB_OPMODE_HOST,
+	.u_data.host = {
+		.vbus_gpio = -1,
+		.hot_plug = false,
+		.remote_wakeup_supported = true,
+		.power_off_on_suspend = true,
+	},
+	.u_cfg.utmi = {
+		.hssync_start_delay = 0,
+		.elastic_limit = 16,
+		.idle_wait_delay = 17,
+		.term_range_adj = 6,
+		.xcvr_setup = 15,
+		.xcvr_lsfslew = 0,
+		.xcvr_lsrslew = 3,
+		.xcvr_setup_offset = 0,
+		.xcvr_use_fuses = 1,
+		.vbus_oc_map = 0x4,
+		.xcvr_hsslew_lsb = 2,
+	},
+};
+
+static struct tegra_usb_platform_data tegra_ehci2_utmi_en_pdata = {
+	.port_otg = false,
+	.has_hostpc = true,
+	.unaligned_dma_buf_supported = false,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
+	.op_mode = TEGRA_USB_OPMODE_HOST,
+	.u_data.host = {
+		.vbus_gpio = -1,
+		.hot_plug = false,
+		.remote_wakeup_supported = true,
+		.power_off_on_suspend = true,
+	},
+	.u_cfg.utmi = {
+		.hssync_start_delay = 0,
+		.elastic_limit = 16,
+		.idle_wait_delay = 17,
+		.term_range_adj = 6,
+		.xcvr_setup = 8,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.xcvr_setup_offset = 0,
+		.xcvr_use_fuses = 1,
+		.vbus_oc_map = 0x5,
+	},
+};
+
+static struct tegra_usb_platform_data tegra_ehci3_utmi_en_pdata = {
+	.port_otg = false,
+	.has_hostpc = true,
+	.unaligned_dma_buf_supported = false,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
+	.op_mode = TEGRA_USB_OPMODE_HOST,
+	.u_data.host = {
+		.vbus_gpio = -1,
+		.hot_plug = false,
+		.remote_wakeup_supported = true,
+		.power_off_on_suspend = true,
+	},
+	.u_cfg.utmi = {
+	.hssync_start_delay = 0,
+		.elastic_limit = 16,
+		.idle_wait_delay = 17,
+		.term_range_adj = 6,
+		.xcvr_setup = 8,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.xcvr_setup_offset = 0,
+		.xcvr_use_fuses = 1,
+		.vbus_oc_map = 0x5,
+	},
+};
+
+/* GPIO usage for Bruce modem */
+static struct gpio modem_gpios[] = {
 	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
-	{MDM_RST, GPIOF_OUT_INIT_LOW, "MODEM RESET"},
+	{MDM_RST, GPIOF_OUT_INIT_HIGH, "MODEM RESET"},
 	{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
 };
 
 static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -586,6 +804,12 @@ static struct tegra_usb_platform_data tegra_ehci2_hsic_smsc_hub_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
+};
+
+/* Enhance USB phy driving strength */
+static struct tegra_usb_otg_data tegra_otg_en_pdata = {
+	.ehci_device = &tegra_ehci1_device,
+	.ehci_pdata = &tegra_ehci1_utmi_en_pdata,
 };
 
 static void ardbeg_usb_init(void)
@@ -630,8 +854,9 @@ static void ardbeg_usb_init(void)
 			tegra_udc_pdata.u_data.dev.qc2_current_limit_ma = 3000;
 		}
 
-		if (board_info.board_id == BOARD_P1761)
-			tegra_udc_pdata.u_data.dev.dcp_current_limit_ma = 1800;
+		/* Derating dcp current limit */
+                /* based on Jul 21, 2014 email from onion_yang@compal.com */
+			tegra_udc_pdata.u_data.dev.dcp_current_limit_ma = 1680;
 
 		switch (bi.board_id) {
 		case BOARD_E1733:
@@ -690,6 +915,115 @@ static void ardbeg_usb_init(void)
 		    (bi.board_id != BOARD_E1784)) {
 			tegra_ehci3_device.dev.platform_data =
 				&tegra_ehci3_utmi_pdata;
+			platform_device_register(&tegra_ehci3_device);
+		}
+	}
+
+}
+
+/* Enhance USB phy driving strength */
+static void ardbeg_usb_en_init(void)
+{
+	int usb_port_owner_info = tegra_get_usb_port_owner_info();
+	int modem_id = tegra_get_modem_id();
+	struct board_info bi;
+	tegra_get_pmu_board_info(&bi);
+
+	if (board_info.sku == 1100 || board_info.board_id == BOARD_P1761 ||
+					board_info.board_id == BOARD_E1784)
+		tegra_ehci1_utmi_pdata.u_data.host.turn_off_vbus_on_lp0 = true;
+
+	if (board_info.board_id == BOARD_PM359 ||
+			board_info.board_id == BOARD_PM358 ||
+			board_info.board_id == BOARD_PM370 ||
+			board_info.board_id == BOARD_PM374 ||
+			board_info.board_id == BOARD_PM363) {
+		/* Laguna */
+		/* Host cable is detected through AMS PMU Interrupt */
+		tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+		tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+		tegra_ehci1_utmi_en_pdata.id_extcon_dev_name = "as3722-extcon";
+	} else {
+		/* Ardbeg and TN8 */
+
+		/*
+		 * TN8 supports vbus changing and it can handle
+		 * vbus voltages larger then 5V.  Enable this.
+		 */
+		if (board_info.board_id == BOARD_P1761 ||
+			board_info.board_id == BOARD_E1784) {
+			/*
+			 * Set the maximum voltage that can be supplied
+			 * over USB vbus that the board supports if we use
+			 * a quick charge 2 wall charger.
+			 */
+			tegra_udc_en_pdata.qc2_voltage = TEGRA_USB_QC2_9V;
+			/*
+			 * TN8 board design can handle 3A charging
+			 */
+			tegra_udc_en_pdata.u_data.dev.qc2_current_limit_ma = 3000;
+		}
+
+		if (board_info.board_id == BOARD_P1761)
+			tegra_udc_en_pdata.u_data.dev.dcp_current_limit_ma = 1800;
+
+		switch (bi.board_id) {
+		case BOARD_E1733:
+			/* Host cable is detected through PMU Interrupt */
+			tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+			tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+			tegra_ehci1_utmi_en_pdata.id_extcon_dev_name =
+							 "as3722-extcon";
+			break;
+		case BOARD_E1736:
+		case BOARD_E1769:
+		case BOARD_E1735:
+		case BOARD_E1936:
+		case BOARD_P1761:
+			/* Device cable is detected through PMU Interrupt */
+			tegra_udc_en_pdata.support_pmu_vbus = true;
+			tegra_udc_en_pdata.vbus_extcon_dev_name = "palmas-extcon";
+			tegra_ehci1_utmi_en_pdata.support_pmu_vbus = true;
+			tegra_ehci1_utmi_en_pdata.vbus_extcon_dev_name =
+							 "palmas-extcon";
+			/* Host cable is detected through PMU Interrupt */
+			tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+			tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
+			tegra_ehci1_utmi_en_pdata.id_extcon_dev_name =
+							 "palmas-extcon";
+		}
+	}
+
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
+		tegra_otg_en_pdata.is_xhci = false;
+		tegra_udc_en_pdata.u_data.dev.is_xhci = false;
+	} else {
+		tegra_otg_en_pdata.is_xhci = true;
+		tegra_udc_en_pdata.u_data.dev.is_xhci = true;
+	}
+	tegra_otg_device.dev.platform_data = &tegra_otg_en_pdata;
+	platform_device_register(&tegra_otg_device);
+	/* Setup the udc platform data */
+	tegra_udc_device.dev.platform_data = &tegra_udc_en_pdata;
+
+	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
+		if (!modem_id) {
+			if ((bi.board_id != BOARD_P1761) &&
+			    (bi.board_id != BOARD_E1922) &&
+			    (bi.board_id != BOARD_E1784)) {
+				tegra_ehci2_device.dev.platform_data =
+					&tegra_ehci2_utmi_en_pdata;
+				platform_device_register(&tegra_ehci2_device);
+			}
+		}
+	}
+
+	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
+		if ((bi.board_id != BOARD_P1761) &&
+		    (bi.board_id != BOARD_E1922) &&
+		    (bi.board_id != BOARD_E1784)) {
+			tegra_ehci3_device.dev.platform_data =
+				&tegra_ehci3_utmi_en_pdata;
 			platform_device_register(&tegra_ehci3_device);
 		}
 	}
@@ -771,6 +1105,9 @@ static int baseband_init(void)
 	tegra_pinmux_set_pullupdown(TEGRA_PINGROUP_ULPI_DATA4,
 				    TEGRA_PUPD_PULL_DOWN);
 
+	/* Release modem reset to start boot */
+	gpio_set_value(MDM_RST, 1);
+
 	/* export GPIO for user space access through sysfs */
 	gpio_export(MDM_RST, false);
 	gpio_export(MDM_SAR0, false);
@@ -790,8 +1127,8 @@ static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.boot_irq_flags = IRQF_TRIGGER_RISING |
 				    IRQF_TRIGGER_FALLING |
 				    IRQF_ONESHOT,
-	.autosuspend_delay = 2000,
-	.short_autosuspend_delay = 50,
+	.autosuspend_delay = 1000,
+	.short_autosuspend_delay = 1000,
 	.tegra_ehci_device = &tegra_ehci2_device,
 	.tegra_ehci_pdata = &tegra_ehci2_hsic_baseband_pdata,
 };
@@ -923,17 +1260,70 @@ struct spi_board_info maxim_sti_spi_board = {
 	.controller_data = &maxim_dev_cdata,
 };
 
+/** sensor hub */
+static void sh_power_on(const struct sensor_hub_platform_data *pdata)
+{
+	gpio_set_value(pdata->gpio_reset_n, 0);
+	gpio_set_value(pdata->gpio_boot_cfg0, 0);
+	gpio_set_value(pdata->gpio_boot_cfg1, 0);
+	gpio_set_value(pdata->gpio_pwr_en, 1);
+	mdelay(100);
+	gpio_set_value(pdata->gpio_reset_n, 1);
+	mdelay(50);
+	return;
+}
+
+static void sh_power_off(const struct sensor_hub_platform_data *pdata)
+{
+	gpio_set_value(pdata->gpio_reset_n, 0);
+	gpio_set_value(pdata->gpio_boot_cfg0, 0);
+	gpio_set_value(pdata->gpio_boot_cfg1, 0);
+	gpio_set_value(pdata->gpio_pwr_en, 0);
+	mdelay(60);
+	return;
+}
+
+static struct sensor_hub_platform_data sensor_hub_pdata = {
+	.gpio_reset_n = TEGRA_GPIO_PQ4,
+	.gpio_pwr_en = TEGRA_GPIO_PS6,
+	.gpio_boot_cfg0 = TEGRA_GPIO_PQ2,
+	.gpio_boot_cfg1 = TEGRA_GPIO_PQ3,
+	.power_on = sh_power_on,
+	.power_off = sh_power_off,
+};
+
+/* platform data for hardware elder then DVT2 */
+static struct sensor_hub_platform_data sensor_hub_pdata_pre_dvt2 = {
+	.gpio_reset_n = TEGRA_GPIO_PQ4,
+	.gpio_pwr_en = TEGRA_GPIO_PQ1,
+	.gpio_boot_cfg0 = TEGRA_GPIO_PQ2,
+	.gpio_boot_cfg1 = TEGRA_GPIO_PQ3,
+	.power_on = sh_power_on,
+	.power_off = sh_power_off,
+};
+
+static struct spi_board_info sensor_hub_spi_board = {
+	.modalias = SH_SPI_NAME,
+	.max_speed_hz = 1000000,
+	.bus_num = 2,
+	.chip_select = 0,
+	.mode = SPI_MODE_0,
+	.platform_data = &sensor_hub_pdata,
+};
+
+#if 0
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
 	{ "clk_out_2",  "extern2",      40800000,       false},
 	{ NULL,         NULL,           0,              0},
 };
+#endif
 
 static struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
-	.platform_id = RM_PLATFORM_A010,
+	.platform_id = RM_PLATFORM_K107,
 	.name_of_clock = "clk_out_2",
 	.name_of_clock_con = "extern2",
 };
@@ -977,19 +1367,28 @@ static struct spi_board_info rm31080a_norrin_spi_board[1] = {
 
 static int __init ardbeg_touch_init(void)
 {
+	int err=0;
 	tegra_get_board_info(&board_info);
 
-	if (tegra_get_touch_vendor_id() == MAXIM_TOUCH) {
+	if (get_cci_hw_id() == 0) {
 		pr_info("%s init maxim touch\n", __func__);
+		err = gpio_request(TOUCH_GPIO_SDN_MAXIM_STI_SPI, "TOUCH_SHDN");
+		if (err < 0)
+			pr_err("TOUCH_SHDN gpio request failed\n");
+		else {
+			pr_info("%s set TOUCH_GPIO_SDN_MAXIM_STI_SPI to HI\n", __func__);
+			gpio_direction_output(TOUCH_GPIO_SDN_MAXIM_STI_SPI, 1);
+		}
+
 #if defined(CONFIG_TOUCHSCREEN_MAXIM_STI) || \
 	defined(CONFIG_TOUCHSCREEN_MAXIM_STI_MODULE)
 		if (tegra_get_touch_panel_id() == TOUCHPANEL_TN7)
 			maxim_sti_spi_board.platform_data = &maxim_sti_pdata_rd;
 		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
 #endif
-	} else if (tegra_get_touch_vendor_id() == RAYDIUM_TOUCH) {
+	} else {
 		pr_info("%s init raydium touch\n", __func__);
-		tegra_clk_init_from_table(touch_clk_init_table);
+        /* tegra_clk_init_from_table(touch_clk_init_table); */
 		if (board_info.board_id == BOARD_PM374) {
 			rm31080a_norrin_spi_board[0].irq =
 				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
@@ -999,6 +1398,13 @@ static int __init ardbeg_touch_init(void)
 					&rm31080a_norrin_spi_board[0],
 					ARRAY_SIZE(rm31080a_norrin_spi_board));
 		} else {
+			err = gpio_request(TOUCH_GPIO_SDN_MAXIM_STI_SPI, "TOUCH_SHDN");
+			if (err < 0)
+				pr_err("TOUCH_SHDN gpio request failed\n");
+			else {
+				pr_info("%s set TOUCH_GPIO_SDN_MAXIM_STI_SPI to HI\n", __func__);
+				gpio_direction_output(TOUCH_GPIO_SDN_MAXIM_STI_SPI, 1);
+			}
 			rm31080a_ardbeg_spi_board[0].irq =
 				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
 			touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
@@ -1008,6 +1414,69 @@ static int __init ardbeg_touch_init(void)
 					ARRAY_SIZE(rm31080a_ardbeg_spi_board));
 		}
 	}
+
+	return 0;
+}
+
+static int __init
+__sensor_hub_init(const struct sensor_hub_platform_data *pdata)
+{
+	/* hack WAKE45 issue
+	 *
+	 * YELLOWSTONE has HDMI_VSYNC pin connected between K1 and
+	 * sensor hub. It is supposed to be an input pin for sensor
+	 * hub. However, if the pin is not configured as output on K1
+	 * side, it will stay as an input pin, and a wake source as
+	 * well.
+	 *
+	 * To prevent any malfunction on this pin, here we set the pin
+	 * as gpio output pin.
+	 */
+	{
+		if (gpio_request(TEGRA_GPIO_PBB6, "HDMI_VSYNC_UNKNOWN"))
+			pr_warn("%s:%d gpio requirest failed\n",
+				__func__, __LINE__);
+		if (gpio_direction_output(TEGRA_GPIO_PBB6, 0))
+			pr_warn("%s:%d gpio direction failed\n",
+				__func__, __LINE__);
+	}
+
+	/* get gpios */
+	gpio_request_one(pdata->gpio_pwr_en, GPIOF_OUT_INIT_LOW, "sh_pwr_en");
+	gpio_request_one(pdata->gpio_reset_n, GPIOF_OUT_INIT_LOW, "sh_reset_n");
+	gpio_request_one(pdata->gpio_boot_cfg0, GPIOF_OUT_INIT_LOW,
+			 "sh_boot_cfg0");
+	gpio_request_one(pdata->gpio_boot_cfg1, GPIOF_OUT_INIT_LOW,
+			 "sh_boot_cfg1");
+
+	/** export gpios to user-space */
+	gpio_export(pdata->gpio_reset_n, true);
+	gpio_export(pdata->gpio_pwr_en, true);
+	gpio_export(pdata->gpio_boot_cfg0, true);
+	gpio_export(pdata->gpio_boot_cfg1, true);
+
+	pdata->power_on(pdata);
+
+	sensor_hub_spi_board.platform_data = pdata;
+
+	spi_register_board_info(&sensor_hub_spi_board, 1);
+
+	return 0;
+}
+
+static int __init ardbeg_sensor_hub_init(void)
+{
+	int hwid = get_cci_hw_id();
+	const struct sensor_hub_platform_data *pdata;
+
+	/* choose which platform */
+	if (hwid <= DVT2)
+		pdata = &sensor_hub_pdata_pre_dvt2;
+	else
+		pdata = &sensor_hub_pdata;
+
+	__sensor_hub_init(pdata);
+
 	return 0;
 }
 
@@ -1113,13 +1582,15 @@ static void __init edp_init(void)
 
 static void __init tegra_ardbeg_early_init(void)
 {
-	ardbeg_sysedp_init();
+	/*ardbeg_sysedp_init();*/
 	tegra_clk_init_from_table(ardbeg_clk_init_table);
 	tegra_clk_verify_parents();
 	if (of_machine_is_compatible("nvidia,laguna"))
 		tegra_soc_device_init("laguna");
 	else if (of_machine_is_compatible("nvidia,tn8"))
 		tegra_soc_device_init("tn8");
+	else if (of_machine_is_compatible("google,yellowstone"))
+		tegra_soc_device_init("yellowstone");
 	else if (of_machine_is_compatible("nvidia,ardbeg_sata"))
 		tegra_soc_device_init("ardbeg_sata");
 	else if (of_machine_is_compatible("nvidia,norrin"))
@@ -1162,16 +1633,22 @@ static void __init tegra_ardbeg_late_init(void)
 		board_info.board_id, board_info.sku,
 		board_info.fab, board_info.major_revision,
 		board_info.minor_revision);
-
 	ardbeg_display_init();
 	ardbeg_uart_init();
-	ardbeg_usb_init();
+
+	/* Enhance USB phy driving strength */
+	if (get_cci_hw_id() == DVT3 ||
+		get_cci_hw_id() == PVT)
+        /* With usb switch, apply default usb driving strength */
+		ardbeg_usb_init();
+	else
+		ardbeg_usb_en_init();
+
 	ardbeg_modem_init();
 	ardbeg_xusb_init();
 	ardbeg_i2c_init();
 	ardbeg_audio_init();
 	platform_add_devices(ardbeg_devices, ARRAY_SIZE(ardbeg_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	ardbeg_sdhci_init();
 	if (board_info.board_id == BOARD_PM359 ||
@@ -1224,6 +1701,7 @@ static void __init tegra_ardbeg_late_init(void)
 	tegra_wdt_recovery_init();
 #endif
 
+	ardbeg_sensor_hub_init();
 	ardbeg_sensors_init();
 
 	ardbeg_soctherm_init();
@@ -1233,11 +1711,7 @@ static void __init tegra_ardbeg_late_init(void)
 
 	ardbeg_sysedp_dynamic_capping_init();
 	ardbeg_sysedp_batmon_init();
-}
-
-static void __init ardbeg_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
+	tegra_vibrator_init();
 }
 
 static void __init tegra_ardbeg_init_early(void)
@@ -1246,8 +1720,23 @@ static void __init tegra_ardbeg_init_early(void)
 	tegra12x_init_early();
 }
 
+static int ccihwid_proc_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, cci_hwid_show, NULL);
+}
+
+static const struct file_operations ccihwid_proc_fops = {
+    .owner      = THIS_MODULE,
+    .open       = ccihwid_proc_open,
+    .read       = seq_read,
+};
+
 static void __init tegra_ardbeg_dt_init(void)
 {
+    struct proc_dir_entry *ccihwid_entry;
+
+    ccihwid_entry = proc_create("CCI_HW_ID", 0664, NULL, &ccihwid_proc_fops);
+
 	tegra_get_board_info(&board_info);
 	tegra_get_display_board_info(&display_board_info);
 
@@ -1270,7 +1759,6 @@ static void __init tegra_ardbeg_reserve(void)
 #else
 	tegra_reserve(SZ_1G, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	ardbeg_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const ardbeg_dt_board_compat[] = {
@@ -1285,6 +1773,11 @@ static const char * const laguna_dt_board_compat[] = {
 
 static const char * const tn8_dt_board_compat[] = {
 	"nvidia,tn8",
+	NULL
+};
+
+static const char * const yellowstone_dt_board_compat[] = {
+	"google,yellowstone",
 	NULL
 };
 
@@ -1323,6 +1816,20 @@ DT_MACHINE_START(TN8, "tn8")
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= tn8_dt_board_compat,
+	.init_late      = tegra_init_late
+MACHINE_END
+
+DT_MACHINE_START(YELLOWSTONE, "yellowstone")
+	.atag_offset	= 0x100,
+	.smp		= smp_ops(tegra_smp_ops),
+	.map_io		= tegra_map_common_io,
+	.reserve	= tegra_ardbeg_reserve,
+	.init_early	= tegra_ardbeg_init_early,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
+	.init_machine	= tegra_ardbeg_dt_init,
+	.restart	= tegra_assert_system_reset,
+	.dt_compat	= yellowstone_dt_board_compat,
 	.init_late      = tegra_init_late
 MACHINE_END
 

@@ -1,8 +1,8 @@
 /*
  * rt56xx_ioctl.h  --  RT56XX ALSA SoC audio driver IO control
  *
- * Copyright (c) 2011-2013 REALTEK SEMICONDUCTOR CORP. All rights reserved.
- * Author: Bard Liao <bardliao@realtek.com>
+ * Copyright 2012 Realtek Microelectronics
+ * Author: Bard <bardliao@realtek.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

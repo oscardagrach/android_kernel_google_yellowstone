@@ -27,6 +27,7 @@ struct vi {
 	struct tegra_camera *camera;
 	struct platform_device *ndev;
 	struct regulator *reg;
+	struct regulator *sreg;
 	uint vi_bw;
 #if defined(CONFIG_TEGRA_ISOMGR)
 	tegra_isomgr_handle isomgr_handle;

@@ -1,7 +1,7 @@
 /*
  * drivers/video/tegra/dc/nvhdcp.c
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -136,6 +136,10 @@ static int nvhdcp_i2c_read(struct tegra_nvhdcp *nvhdcp, u8 reg,
 	};
 
 	do {
+		if (!nvhdcp->hdmi->hpd_switch.state) {
+			nvhdcp_err("hdmi hpd disconnect\n");
+			return -EIO;
+		}
 		if (!nvhdcp_is_plugged(nvhdcp)) {
 			nvhdcp_err("disconnect during i2c xfer\n");
 			return -EIO;
@@ -748,6 +752,10 @@ static int verify_link(struct tegra_nvhdcp *nvhdcp, bool wait_ri)
 	tx = 0;
 	/* retry 3 times to deal with I2C link issues */
 	do {
+		if (!hdmi->hpd_switch.state) {
+			nvhdcp_err("hdmi hpd disconnect\n");
+			return -EIO;
+		}
 		if (wait_ri)
 			old = get_transmitter_ri(hdmi);
 
@@ -1084,7 +1092,9 @@ void tegra_nvhdcp_set_plug(struct tegra_nvhdcp *nvhdcp, bool hpd)
 	nvhdcp_debug("hdmi hotplug detected (hpd = %d)\n", hpd);
 
 	if (hpd) {
+		mutex_lock(&nvhdcp->lock);
 		nvhdcp_set_plugged(nvhdcp, true);
+		mutex_unlock(&nvhdcp->lock);
 		tegra_nvhdcp_on(nvhdcp);
 	} else {
 		tegra_nvhdcp_off(nvhdcp);

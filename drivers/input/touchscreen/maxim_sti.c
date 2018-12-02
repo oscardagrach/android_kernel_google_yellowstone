@@ -1189,7 +1189,7 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 						 input_msg->event[i].x);
 				input_report_abs(dd->input_dev[inp],
 						 ABS_MT_POSITION_Y,
-						 input_msg->event[i].y);
+						 (1920-input_msg->event[i].y));
 				input_report_abs(dd->input_dev[inp],
 						 ABS_MT_PRESSURE,
 						 input_msg->event[i].z);
@@ -1714,6 +1714,8 @@ static int probe(struct spi_device *spi)
 	int                     ret, i;
 	void                    *ptr;
 
+	INFO("[PBP5] %s Enter\n", __func__);
+
 	/* validate platform data */
 	if (pdata == NULL || pdata->init == NULL || pdata->reset == NULL ||
 		pdata->irq == NULL || pdata->touch_fusion == NULL ||
@@ -1835,6 +1837,8 @@ static int probe(struct spi_device *spi)
 	wake_up_process(dd->thread);
 	INFO("driver loaded; version %s; release date %s", DRIVER_VERSION,
 	     DRIVER_RELEASE);
+	
+	INFO("[PBP5] %s exit\n", __func__);
 
 	return 0;
 

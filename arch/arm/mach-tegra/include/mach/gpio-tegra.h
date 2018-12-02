@@ -37,4 +37,5 @@ void tegra_gpio_init_configure(unsigned gpio, bool is_input, int value);
 int tegra_gpio_get_bank_int_nr(int gpio);
 int tegra_is_gpio(int);
 
+void yellowstone_pinmux_init(void);
 #endif

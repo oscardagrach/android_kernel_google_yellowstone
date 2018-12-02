@@ -25,6 +25,8 @@
 #include <linux/module.h>
 #include <linux/clk.h>
 
+#include <mach/mipi-cal.h>
+
 #include "iomap.h"
 
 struct mipi_cal_info {
@@ -55,7 +57,7 @@ static struct miscdevice mipi_cal_dev = {
 
 static int mipi_cal_open(struct inode *inode, struct file *filp)
 {
-	if (atomic_xchg(&mipi_cal_in_use, 1))
+	if (mipi_cal_trylock())
 		return -EBUSY;
 
 	if (pm.clk72mhz)
@@ -73,7 +75,7 @@ static int mipi_cal_release(struct inode *inode, struct file *filp)
 	if (pm.clk72mhz)
 		clk_disable_unprepare(pm.clk72mhz);
 
-	WARN_ON(!atomic_xchg(&mipi_cal_in_use, 0));
+	mipi_cal_unlock();
 	return 0;
 }
 
@@ -112,6 +114,26 @@ static int __init mipi_cal_dev_init(void)
 #endif
 	return misc_register(&mipi_cal_dev);
 }
+
+int mipi_cal_trylock(void)
+{
+	if (atomic_xchg(&mipi_cal_in_use, 1)) {
+		pr_warn("%s: mipi-cal busy now\n", __func__);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(mipi_cal_trylock);
+
+void mipi_cal_unlock(void)
+{
+	if (!atomic_xchg(&mipi_cal_in_use, 0))
+		WARN_ON(1);
+
+	return;
+}
+EXPORT_SYMBOL(mipi_cal_unlock);
 
 module_init(mipi_cal_dev_init);
 MODULE_LICENSE("GPL v2");

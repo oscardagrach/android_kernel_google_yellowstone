@@ -455,8 +455,8 @@ static int nvmap_dmabuf_begin_cpu_access(struct dma_buf *dmabuf,
 	struct nvmap_handle_info *info = dmabuf->priv;
 
 	trace_nvmap_dmabuf_begin_cpu_access(dmabuf, start, len);
-	return __nvmap_cache_maint(NULL, info->handle, start, start + len,
-				   NVMAP_CACHE_OP_INV, 1);
+	return __nvmap_do_cache_maint(NULL, info->handle, start, start + len,
+				      NVMAP_CACHE_OP_INV, 1);
 }
 
 static void nvmap_dmabuf_end_cpu_access(struct dma_buf *dmabuf,
@@ -466,7 +466,7 @@ static void nvmap_dmabuf_end_cpu_access(struct dma_buf *dmabuf,
 	struct nvmap_handle_info *info = dmabuf->priv;
 
 	trace_nvmap_dmabuf_end_cpu_access(dmabuf, start, len);
-	__nvmap_cache_maint(NULL, info->handle, start, start + len,
+	__nvmap_do_cache_maint(NULL, info->handle, start, start + len,
 				   NVMAP_CACHE_OP_WB_INV, 1);
 
 }
@@ -643,7 +643,15 @@ EXPORT_SYMBOL(__nvmap_dmabuf_export);
 struct dma_buf *nvmap_dmabuf_export(struct nvmap_client *client,
 				 unsigned long user_id)
 {
-	return __nvmap_dmabuf_export(client, unmarshal_user_id(user_id));
+	struct dma_buf *dmabuf;
+	ulong handle;
+
+	handle = unmarshal_user_id(user_id);
+	dmabuf = __nvmap_dmabuf_export(client, handle);
+	if (handle)
+		nvmap_handle_put((struct nvmap_handle *)handle);
+
+	return dmabuf;
 }
 
 /*
@@ -663,6 +671,11 @@ struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref)
 /*
  * Returns the nvmap handle ID associated with the passed dma_buf's fd. This
  * does not affect the ref count of the dma_buf.
+ * NOTE: Callers of this utility function must invoke nvmap_handle_put after
+ * using the returned nvmap_handle. Call to nvmap_handle_get is required in
+ * this utility function to avoid race conditions in code where nvmap_handle
+ * returned by this function is freed concurrently while the caller is still
+ * using it.
  */
 ulong nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client, int fd)
 {
@@ -676,6 +689,8 @@ ulong nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client, int fd)
 	if (dmabuf->ops == &nvmap_dma_buf_ops) {
 		info = dmabuf->priv;
 		id = (ulong) info->handle;
+		if (!nvmap_handle_get(info->handle))
+			id = -EINVAL;
 	}
 	dma_buf_put(dmabuf);
 	return id;
@@ -697,6 +712,7 @@ int nvmap_ioctl_share_dmabuf(struct file *filp, void __user *arg)
 		return -EINVAL;
 
 	op.fd = nvmap_get_dmabuf_fd(client, handle);
+	nvmap_handle_put((struct nvmap_handle *)handle);
 	if (op.fd < 0)
 		return op.fd;
 

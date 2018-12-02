@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-macallan.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -548,7 +548,6 @@ static void __init tegra_macallan_late_init(void)
 	macallan_uart_init();
 	macallan_audio_init();
 	platform_add_devices(macallan_devices, ARRAY_SIZE(macallan_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	macallan_regulator_init();
 	macallan_sdhci_init();
@@ -572,11 +571,6 @@ static void __init tegra_macallan_late_init(void)
 	macallan_sensors_init();
 	macallan_soctherm_init();
 	tegra_register_fuse();
-}
-
-static void __init macallan_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 
 static void __init tegra_macallan_dt_init(void)
@@ -605,7 +599,6 @@ static void __init tegra_macallan_reserve(void)
 #else
 	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #endif
-	macallan_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const macallan_dt_board_compat[] = {

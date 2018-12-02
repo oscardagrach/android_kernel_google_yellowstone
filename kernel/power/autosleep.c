@@ -60,6 +60,7 @@ static void try_to_suspend(struct work_struct *work)
 		schedule_timeout_uninterruptible(HZ / 2);
 
  out:
+    get_wakeup_sources_active();
 	queue_up_suspend_work();
 }
 

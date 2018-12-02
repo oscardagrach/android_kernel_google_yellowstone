@@ -407,6 +407,9 @@ int nvmap_set_pages_array_wc(struct page **pages, int addrinarray);
 int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray);
 int nvmap_set_pages_array_wb(struct page **pages, int addrinarray);
 
+int nvmap_do_cache_maint_list(struct nvmap_handle **handles, u32 *offsets,
+			      u32 *sizes, int op, int nr);
+
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
 				 unsigned long id);
@@ -423,9 +426,9 @@ void __nvmap_munmap(struct nvmap_handle *h, void *addr);
 int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma);
 int __nvmap_get_handle_param(struct nvmap_client *client,
 			     struct nvmap_handle *h, u32 param, u64 *result);
-int __nvmap_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
-			unsigned long start, unsigned long end,
-			unsigned int op, unsigned int allow_deferred);
+int __nvmap_do_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
+			   unsigned long start, unsigned long end,
+			   unsigned int op, unsigned int allow_deferred);
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name);
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);

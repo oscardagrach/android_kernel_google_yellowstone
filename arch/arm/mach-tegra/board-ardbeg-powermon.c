@@ -19,6 +19,7 @@
 
 #include <linux/i2c.h>
 #include <linux/platform_data/ina230.h>
+#include <linux/ina3221.h>
 
 #include "board.h"
 #include "board-ardbeg.h"
@@ -790,6 +791,34 @@ static struct i2c_board_info ardbeg_A01_i2c2_2_ina230_board_info[] = {
 	},
 };
 
+#ifdef PBP5_EVT_BOARD
+enum {
+    VDD_BAT_GPU_SOC,
+};
+
+static struct ina3221_platform_data power_mon_info[] = {
+    [VDD_BAT_GPU_SOC] = {
+        .rail_name = {"VDD_BAT", "VDD_SYS_GPU_IN",
+                            "VDD_SYS_SOC_IN"},
+        .shunt_resistor = {10, 10, 10},
+        .cont_conf_data = INA3221_CONT_CONFIG_DATA,
+        .trig_conf_data = INA3221_TRIG_CONFIG_DATA,
+    },
+};
+
+enum {
+    INA_I2C_ADDR_40,
+};
+
+static struct i2c_board_info pbp5_i2c1_ina3221_board_info[] = {
+    [INA_I2C_ADDR_40] = {
+        I2C_BOARD_INFO("ina3221", 0x40),
+        .platform_data = &power_mon_info[VDD_BAT_GPU_SOC],
+        .irq = -1,
+    },
+};
+#endif
+
 static void __init register_devices_ardbeg_A01(void)
 {
 	i2c_register_board_info(PCA954x_I2C_BUS1,
@@ -887,6 +916,11 @@ int __init ardbeg_pmon_init(void)
 	if (bi.sku == 1100)
 		modify_tn8_rail_data();
 
+#ifdef PBP5_EVT_BOARD
+    pr_info("INA3221: registering device\n");
+    i2c_register_board_info(1, pbp5_i2c1_ina3221_board_info,
+            ARRAY_SIZE(pbp5_i2c1_ina3221_board_info));
+#else
 	i2c_register_board_info(PCA954x_I2C_BUS0,
 			ardbeg_i2c2_0_ina230_board_info,
 			ARRAY_SIZE(ardbeg_i2c2_0_ina230_board_info));
@@ -897,7 +931,7 @@ int __init ardbeg_pmon_init(void)
 		(bi.board_id != BOARD_E1922) &&
 		(bi.board_id != BOARD_E1923))
 		register_devices_ardbeg();
-
+#endif
 	return 0;
 }
 

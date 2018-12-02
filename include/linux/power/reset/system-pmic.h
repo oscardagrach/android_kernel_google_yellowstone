@@ -29,6 +29,7 @@ struct system_pmic_dev;
 enum system_pmic_power_on_event {
 	SYSTEM_PMIC_USB_VBUS_INSERTION,
 	SYSTEM_PMIC_RTC_ALARM,
+	SYSTEM_PMIC_VAC_ACOK,
 	SYSTEM_PMIC_MAX_POWER_ON_EVENT,
 };
 

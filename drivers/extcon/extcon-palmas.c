@@ -33,6 +33,9 @@
 #include <linux/of_platform.h>
 #include <linux/sched.h>
 #include <linux/workqueue.h>
+#include <linux/gpio.h>
+#include <../mach-tegra/common.h>
+#include <../mach-tegra/gpio-names.h>
 
 enum palmas_usb_cable_id {
 	USB_CABLE_INIT,
@@ -392,6 +395,7 @@ static int palmas_usb_probe(struct platform_device *pdev)
 
 	palmas_enable_irq(palmas_usb);
 	device_set_wakeup_capable(&pdev->dev, true);
+
 	return 0;
 
 fail_extcon:

@@ -39,8 +39,8 @@
 #include "dvfs.h"
 #include "iomap.h"
 #include "tegra-board-id.h"
+#include "common.h"
 
-#define ARDBEG_WLAN_RST	TEGRA_GPIO_PCC5
 #define ARDBEG_WLAN_PWR	TEGRA_GPIO_PX7
 #define ARDBEG_WLAN_WOW	TEGRA_GPIO_PU5
 #if defined(CONFIG_BCMDHD_EDP_SUPPORT)
@@ -185,7 +185,8 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_DDR50,
+	.uhs_mask = MMC_UHS_MASK_SDR50 | MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_DDR50,
+	.max_clk_limit = 50000000,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
 };
@@ -275,7 +276,6 @@ static int ardbeg_wifi_power(int on)
 	pr_err("%s: %d\n", __func__, on);
 
 	gpio_set_value(ARDBEG_WLAN_PWR, on);
-	gpio_set_value(ARDBEG_WLAN_RST, on);
 	mdelay(100);
 
 	return 0;
@@ -287,7 +287,8 @@ static int ardbeg_wifi_reset(int on)
 	return 0;
 }
 
-#define ARDBEG_WIFI_MAC_ADDR_FILE	"/mnt/factory/wifi/wifi_mac.txt"
+#define ARDBEG_WIFI_MAC_ADDR_FILE	"/persist/wifi_mac.txt"
+#define ARDBEG_DATA_WIFI_MAC_ADDR_FILE	"/data/misc/wifi/wifi_mac.txt"
 
 static int ardbeg_wifi_get_mac_addr(unsigned char *buf)
 {
@@ -304,7 +305,12 @@ static int ardbeg_wifi_get_mac_addr(unsigned char *buf)
 	if (IS_ERR(fp)) {
 		pr_err("%s: cannot open %s\n",
 			__func__, ARDBEG_WIFI_MAC_ADDR_FILE);
-		return -ENOENT;
+		fp = filp_open(ARDBEG_DATA_WIFI_MAC_ADDR_FILE, O_RDONLY, 0);
+		if (IS_ERR(fp)) {
+			pr_err("%s: cannot open %s\n",
+				__func__, ARDBEG_DATA_WIFI_MAC_ADDR_FILE);
+			return -ENOENT;
+		}
 	}
 
 	/* read wifi mac address file */
@@ -348,9 +354,6 @@ static int __init ardbeg_wifi_init(void)
 	rc = gpio_request(ARDBEG_WLAN_PWR, "wlan_power");
 	if (rc)
 		pr_err("WLAN_PWR gpio request failed:%d\n", rc);
-	rc = gpio_request(ARDBEG_WLAN_RST, "wlan_rst");
-	if (rc)
-		pr_err("WLAN_RST gpio request failed:%d\n", rc);
 	rc = gpio_request(ARDBEG_WLAN_WOW, "bcmsdh_sdmmc");
 	if (rc)
 		pr_err("WLAN_WOW gpio request failed:%d\n", rc);
@@ -358,10 +361,6 @@ static int __init ardbeg_wifi_init(void)
 	rc = gpio_direction_output(ARDBEG_WLAN_PWR, 0);
 	if (rc)
 		pr_err("WLAN_PWR gpio direction configuration failed:%d\n", rc);
-	rc = gpio_direction_output(ARDBEG_WLAN_RST, 0);
-	if (rc)
-		pr_err("WLAN_RST gpio direction configuration failed:%d\n", rc);
-
 	rc = gpio_direction_input(ARDBEG_WLAN_WOW);
 	if (rc)
 		pr_err("WLAN_WOW gpio direction configuration failed:%d\n", rc);
@@ -385,6 +384,7 @@ static int __init ardbeg_wifi_prepower(void)
 		!of_machine_is_compatible("nvidia,laguna") &&
 		!of_machine_is_compatible("nvidia,ardbeg_sata") &&
 		!of_machine_is_compatible("nvidia,tn8") &&
+		!of_machine_is_compatible("google,yellowstone") &&
 		!of_machine_is_compatible("nvidia,norrin"))
 		return 0;
 	ardbeg_wifi_power(1);
@@ -431,9 +431,7 @@ int __init ardbeg_sdhci_init(void)
 		tegra_sdhci_platform_data2.wp_gpio = ARDBEG_SD_WP;
 
 	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_E1780)
-		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
-	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
+
 	if ((board_info.board_id == BOARD_E1781) ||
 		(board_info.board_id == BOARD_PM374) ||
 		(board_info.board_id == BOARD_PM359))
@@ -444,6 +442,22 @@ int __init ardbeg_sdhci_init(void)
 		board_info.board_id == BOARD_PM363 ||
 		board_info.board_id == BOARD_PM359)
 			tegra_sdhci_platform_data0.disable_clock_gate = 1;
+
+	/* for YellowStone */
+	/* SDIO, WIFI, SDR25, 50MHz */
+	tegra_sdhci_platform_data0.max_clk_limit = 50000000;
+	tegra_sdhci_platform_data0.uhs_mask =
+		MMC_UHS_MASK_SDR50 | MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR104;
+	/* SD, up to 204MHz, adaptive */
+	tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+	/* eMMC, up to 136MHz SDR104 */
+        if( get_cci_hw_id() >= DVT3 )
+        {
+                tegra_sdhci_platform_data3.max_clk_limit = 204000000;
+        } else {
+                tegra_sdhci_platform_data3.max_clk_limit = 136000000;
+                tegra_sdhci_platform_data3.uhs_mask = MMC_MASK_HS200;
+        }
 
 	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
 	tegra_sdhci_platform_data0.cpu_speedo = speedo;

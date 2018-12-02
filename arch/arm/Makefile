@@ -47,6 +47,10 @@ endif
 # variables on the stack
 KBUILD_CFLAGS += $(call cc-option,-fno-conserve-stack)
 
+ifneq ($(TARGET_BUILD_BOARD_CFLAG),)
+KBUILD_CFLAGS += -D$(TARGET_BUILD_BOARD_CFLAG)
+endif
+
 ifeq ($(CONFIG_CPU_BIG_ENDIAN),y)
 KBUILD_CPPFLAGS	+= -mbig-endian
 AS		+= -EB

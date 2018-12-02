@@ -274,7 +274,8 @@ static int ardbeg_hdmi_hotplug_init(struct device *dev)
 {
 	if (!ardbeg_hdmi_vddio) {
 #ifdef CONFIG_TEGRA_HDMI_PRIMARY
-		if (of_machine_is_compatible("nvidia,tn8"))
+		if (of_machine_is_compatible("nvidia,tn8") ||
+		    of_machine_is_compatible("google,yellowstone"))
 			ardbeg_hdmi_vddio = regulator_get(dev, "vdd-out1-5v0");
 		else
 			ardbeg_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
@@ -482,7 +483,6 @@ static struct tegra_fb_data ardbeg_disp2_fb_data = {
 };
 
 static struct tegra_dc_platform_data ardbeg_disp2_pdata = {
-	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &ardbeg_disp2_out,
 	.fb		= &ardbeg_disp2_fb_data,
 	.emc_clk_rate	= 300000000,
@@ -592,8 +592,11 @@ static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 		panel = &dsi_a_1080p_14_0;
 		break;
 	case BOARD_E1627:
+#ifdef PBP5_EVT_BOARD
+		panel = &dsi_j_wuxga_7;
+#else
 		panel = &dsi_p_wuxga_10_1;
-		tegra_io_dpd_enable(&dsic_io);
+#endif
 		tegra_io_dpd_enable(&dsid_io);
 		break;
 	case BOARD_E1549:
@@ -630,6 +633,12 @@ static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 			panel = &dsi_a_1200_1920_7_0;
 		else
 			panel = &dsi_a_1200_800_8_0;
+		dsi_instance = DSI_INSTANCE_0;
+		tegra_io_dpd_enable(&dsic_io);
+		tegra_io_dpd_enable(&dsid_io);
+		break;
+	case BOARD_YS:
+		panel = &dsi_j_wuxga_7;
 		dsi_instance = DSI_INSTANCE_0;
 		tegra_io_dpd_enable(&dsic_io);
 		tegra_io_dpd_enable(&dsid_io);
@@ -672,7 +681,8 @@ static void ardbeg_panel_select(void)
 
 			tegra_get_board_info(&mainboard);
 			if ((mainboard.board_id == BOARD_E1784) ||
-				(mainboard.board_id == BOARD_P1761)) {
+			    (mainboard.board_id == BOARD_P1761) ||
+			    (mainboard.board_id == BOARD_YS)) {
 
 				ardbeg_disp1_out.rotation = 180;
 

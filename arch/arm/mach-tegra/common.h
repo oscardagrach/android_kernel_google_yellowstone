@@ -46,3 +46,17 @@ u32 tegra_get_bct_strapping(void);
 void __init display_tegra_dt_info(void);
 
 #endif
+enum {
+	HWID_INVALID = -1,
+	EVT = 0,
+	DVT_DEMO,
+	DVT1_1,
+	DVT1_2,
+	DVT2,
+	DVT3,
+	PVT,
+};
+
+extern int get_cci_hw_id(void);
+extern int cci_hw_id;
+extern int ccibootmode;

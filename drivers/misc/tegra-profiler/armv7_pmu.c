@@ -19,17 +19,26 @@
 #include <linux/err.h>
 #include <linux/bitmap.h>
 #include <linux/slab.h>
-
 #include <asm/cputype.h>
 #include <asm/pmu.h>
 
 #include <linux/tegra_profiler.h>
 
+#include "arm_pmu.h"
 #include "armv7_pmu.h"
+#include "armv7_events.h"
 #include "quadd.h"
 #include "debug.h"
 
-static struct armv7_pmu_ctx pmu_ctx;
+static struct quadd_pmu_ctx pmu_ctx;
+
+enum {
+	QUADD_ARM_CPU_TYPE_UNKNOWN,
+	QUADD_ARM_CPU_TYPE_CORTEX_A5,
+	QUADD_ARM_CPU_TYPE_CORTEX_A8,
+	QUADD_ARM_CPU_TYPE_CORTEX_A9,
+	QUADD_ARM_CPU_TYPE_CORTEX_A15,
+};
 
 struct quadd_pmu_info {
 	DECLARE_BITMAP(used_cntrs, QUADD_MAX_PMU_COUNTERS);
@@ -99,6 +108,8 @@ static inline u32
 armv7_pmu_pmnc_read(void)
 {
 	u32 val;
+
+	/* Read Performance MoNitor Control (PMNC) register */
 	asm volatile("mrc p15, 0, %0, c9, c12, 0" : "=r"(val));
 	return val;
 }
@@ -106,7 +117,7 @@ armv7_pmu_pmnc_read(void)
 static inline void
 armv7_pmu_pmnc_write(u32 val)
 {
-	/* Read Performance MoNitor Control (PMNC) register */
+	/* Write Performance MoNitor Control (PMNC) register */
 	asm volatile("mcr p15, 0, %0, c9, c12, 0" : :
 		     "r"(val & QUADD_ARMV7_PMNC_MASK));
 }
@@ -290,8 +301,8 @@ static u32 armv7_pmu_adjust_value(u32 value, int event_id)
 	* so currently we are devided by two
 	*/
 	if (pmu_ctx.l1_cache_rw &&
-	    (pmu_ctx.arch == QUADD_ARM_CPU_TYPE_CORTEX_A8 ||
-	    pmu_ctx.arch == QUADD_ARM_CPU_TYPE_CORTEX_A9) &&
+	    (pmu_ctx.arch.type == QUADD_ARM_CPU_TYPE_CORTEX_A8 ||
+	    pmu_ctx.arch.type == QUADD_ARM_CPU_TYPE_CORTEX_A9) &&
 	    (event_id == QUADD_EVENT_TYPE_L1_DCACHE_READ_MISSES ||
 	    event_id == QUADD_EVENT_TYPE_L1_DCACHE_WRITE_MISSES)) {
 		return value / 2;
@@ -365,6 +376,7 @@ static void quadd_init_pmu(void)
 
 static int pmu_enable(void)
 {
+	pr_info("pmu was reserved\n");
 	return 0;
 }
 
@@ -394,6 +406,7 @@ static void __pmu_disable(void *arg)
 static void pmu_disable(void)
 {
 	on_each_cpu(__pmu_disable, NULL, 1);
+	pr_info("pmu was released\n");
 }
 
 static void pmu_start(void)
@@ -709,6 +722,11 @@ static int get_current_events(int *events, int max_events)
 	return i;
 }
 
+static struct quadd_arch_info *get_arch(void)
+{
+	return &pmu_ctx.arch;
+}
+
 static struct quadd_event_source_interface pmu_armv7_int = {
 	.enable			= pmu_enable,
 	.disable		= pmu_disable,
@@ -724,6 +742,7 @@ static struct quadd_event_source_interface pmu_armv7_int = {
 	.set_events		= set_events,
 	.get_supported_events	= get_supported_events,
 	.get_current_events	= get_current_events,
+	.get_arch		= get_arch,
 };
 
 struct quadd_event_source_interface *quadd_armv7_pmu_init(void)
@@ -735,11 +754,18 @@ struct quadd_event_source_interface *quadd_armv7_pmu_init(void)
 	cpu_implementer = cpu_id >> 24;
 	part_number = cpu_id & 0xFFF0;
 
+	pmu_ctx.arch.type = QUADD_ARM_CPU_TYPE_UNKNOWN;
+	pmu_ctx.arch.ver = 0;
+	strncpy(pmu_ctx.arch.name, "Unknown",
+		sizeof(pmu_ctx.arch.name));
+
 	if (cpu_implementer == ARM_CPU_IMP_ARM) {
 		switch (part_number) {
 		case ARM_CPU_PART_CORTEX_A9:
-			pmu_ctx.arch = QUADD_ARM_CPU_TYPE_CORTEX_A9;
-			strcpy(pmu_ctx.arch_name, "Cortex A9");
+			pmu_ctx.arch.type = QUADD_ARM_CPU_TYPE_CORTEX_A9;
+			strncpy(pmu_ctx.arch.name, "Cortex A9",
+				sizeof(pmu_ctx.arch.name));
+
 			pmu_ctx.counters_mask =
 				QUADD_ARMV7_COUNTERS_MASK_CORTEX_A9;
 			pmu_ctx.current_map = quadd_armv7_a9_events_map;
@@ -747,8 +773,10 @@ struct quadd_event_source_interface *quadd_armv7_pmu_init(void)
 			break;
 
 		case ARM_CPU_PART_CORTEX_A15:
-			pmu_ctx.arch = QUADD_ARM_CPU_TYPE_CORTEX_A15;
-			strcpy(pmu_ctx.arch_name, "Cortex A15");
+			pmu_ctx.arch.type = QUADD_ARM_CPU_TYPE_CORTEX_A15;
+			strncpy(pmu_ctx.arch.name, "Cortex A15",
+				sizeof(pmu_ctx.arch.name));
+
 			pmu_ctx.counters_mask =
 				QUADD_ARMV7_COUNTERS_MASK_CORTEX_A15;
 			pmu_ctx.current_map = quadd_armv7_a15_events_map;
@@ -756,8 +784,7 @@ struct quadd_event_source_interface *quadd_armv7_pmu_init(void)
 			break;
 
 		default:
-			pmu_ctx.arch = QUADD_ARM_CPU_TYPE_UNKNOWN;
-			strcpy(pmu_ctx.arch_name, "Unknown");
+			pmu_ctx.arch.type = QUADD_ARM_CPU_TYPE_UNKNOWN;
 			pmu_ctx.current_map = NULL;
 			break;
 		}
@@ -765,7 +792,9 @@ struct quadd_event_source_interface *quadd_armv7_pmu_init(void)
 
 	INIT_LIST_HEAD(&pmu_ctx.used_events);
 
-	pr_info("arch: %s\n", pmu_ctx.arch_name);
+	pmu_ctx.arch.name[sizeof(pmu_ctx.arch.name) - 1] = '\0';
+	pr_info("arch: %s, type: %d, ver: %d\n",
+		pmu_ctx.arch.name, pmu_ctx.arch.type, pmu_ctx.arch.ver);
 
 	return pmu;
 }

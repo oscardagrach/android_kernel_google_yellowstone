@@ -51,6 +51,7 @@ enum tegra_wdt_status {
 	WDT_DISABLED = 1 << 0,
 	WDT_ENABLED = 1 << 1,
 	WDT_ENABLED_AT_PROBE = 1 << 2,
+	HAS_WDT_DAEMON = 1 << 3,
 };
 
 struct tegra_wdt {
@@ -274,6 +275,7 @@ static int tegra_wdt_open(struct inode *inode, struct file *file)
 		return -EBUSY;
 
 	wdt->status |= WDT_ENABLED;
+	wdt->status |= HAS_WDT_DAEMON;
 	wdt->timeout = heartbeat;
 	tegra_wdt_enable(wdt);
 	file->private_data = wdt;
@@ -360,6 +362,10 @@ static long tegra_wdt_ioctl(struct file *file, unsigned int cmd,
 static ssize_t tegra_wdt_write(struct file *file, const char __user *data,
 			       size_t len, loff_t *ppos)
 {
+	struct tegra_wdt *wdt = file->private_data;
+
+	tegra_wdt_ping(wdt);
+
 	return len;
 }
 
@@ -743,7 +749,7 @@ static int tegra_wdt_resume(struct platform_device *pdev)
 
 #ifndef CONFIG_ARCH_TEGRA_2x_SOC
 	/* Enable interrupt for WDT3 heartbeat watchdog */
-	if (wdt->status & WDT_ENABLED_AT_PROBE) {
+	if ((wdt->status & WDT_ENABLED_AT_PROBE) && (!(wdt->status & HAS_WDT_DAEMON))) {
 		u32 val = 0;
 		val = readl(wdt->wdt_source + WDT_CFG);
 		val |= WDT_CFG_INT_EN;
@@ -755,7 +761,7 @@ static int tegra_wdt_resume(struct platform_device *pdev)
 		val |= WDT_CFG_INT_EN;
 		writel(val, wdt->wdt_avp_source + WDT_CFG);
 #endif
-		pr_info("WDT heartbeat enabled on probe\n");
+		pr_info("WDT heartbeat enabled\n");
 	}
 #endif
 	return 0;

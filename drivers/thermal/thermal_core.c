@@ -33,6 +33,9 @@
 #include <linux/idr.h>
 #include <linux/thermal.h>
 #include <linux/reboot.h>
+#include <linux/timer.h>
+#include <linux/string.h>
+#include <linux/rtc.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
 #define CREATE_TRACE_POINTS
@@ -43,6 +46,16 @@
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
 MODULE_LICENSE("GPL v2");
+
+static int enable_record_thermal = 0;
+static int record_thermal_on = 0;
+static int print_thermal_name = 0;
+struct timer_list report_thermal_timer;
+struct file *pfile = NULL;
+mm_segment_t fs;
+static struct delayed_work report_log_work;
+#define THERMAL_LOG_INTERVAL 5000 /* 5 seconds */
+static int thermal_log_polling_time = THERMAL_LOG_INTERVAL;
 
 static DEFINE_IDR(thermal_tz_idr);
 static DEFINE_IDR(thermal_cdev_idr);
@@ -1386,9 +1399,168 @@ static void thermal_release(struct device *dev)
 	}
 }
 
+static int open_file(char *filename, mode_t mode)
+{
+    pfile = filp_open(filename, mode, 0777);
+    if (IS_ERR(pfile)) return -1;
+    return 0;
+}
+
+static ssize_t write_file(struct file *file, char *buf, loff_t size)
+{
+    ssize_t err;
+    loff_t pos = 0;
+    err = vfs_write(file, buf, size, &pos);
+    return err;
+}
+
+static void pbp5_thermal_report(struct work_struct *work)
+{
+    struct thermal_zone_device *pos;
+    long temperature;
+    struct timespec ts;
+    struct rtc_time tm;
+    static char buf[200];
+    ssize_t err;
+    int len = 0;
+
+    memset(buf, 0, sizeof(buf));
+
+    if (!print_thermal_name) {
+        len += snprintf(buf + len, sizeof(buf) - len, "        ");
+        list_for_each_entry(pos, &thermal_tz_list, node) {
+            if (pos->type != NULL) {
+                len += snprintf(buf + len, sizeof(buf) - len, "%13s",
+                                    pos->type);
+            }
+        }
+        len += snprintf(buf + len, sizeof(buf) - len, "\n");
+
+        err = write_file(pfile, buf, sizeof(buf));
+        if (err < 0) {
+            printk("%s,  Write thermal log fail!, err = %d\n", __func__,
+                        err);
+        }
+
+        memset(buf, 0, sizeof(buf));
+        print_thermal_name = 1;
+        len = 0;
+    }
+
+    getnstimeofday(&ts);
+    rtc_time_to_tm(ts.tv_sec, &tm);
+    len += snprintf(buf + len, sizeof(buf) - len, "%02d:%02d:%02d",
+                            tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+    list_for_each_entry(pos, &thermal_tz_list, node) {
+        if (pos->type != NULL) {
+            err = thermal_zone_get_temp(pos, &temperature);
+            len += snprintf(buf + len, sizeof(buf) - len, "%13ld",
+                                temperature/1000);
+        }
+    }
+    len += snprintf(buf + len, sizeof(buf) - len, "\n");
+
+    err = write_file(pfile, buf, sizeof(buf));
+    if (err < 0) {
+        printk("%s,  Write thermal log fail!, err = %d\n", __func__, err);
+    }
+
+    schedule_delayed_work(&report_log_work, msecs_to_jiffies(thermal_log_polling_time));
+}
+
+static ssize_t
+record_thermal_show(struct class *c,
+        struct class_attribute *attr,
+        char *buf)
+{
+	return sprintf(buf, "%d\n", enable_record_thermal);
+}
+
+static ssize_t
+record_thermal_store(struct class *c,
+        struct class_attribute *attr,
+        const char *buf,
+        size_t count)
+{
+    unsigned long temp_flag;
+    struct timespec ts;
+    struct rtc_time tm;
+    static char log[120];
+    ssize_t err;
+
+    if (strict_strtoul(buf, 10, &temp_flag)) {
+        return -EINVAL;
+    }
+    else enable_record_thermal = (int) temp_flag;
+
+    if (enable_record_thermal == 1 && !record_thermal_on) {
+        getnstimeofday(&ts);
+        rtc_time_to_tm(ts.tv_sec, &tm);
+        snprintf(log, sizeof(log), "/data/%d%02d%02d_%02d%02d%02d.log",
+                        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                        tm.tm_hour, tm.tm_min, tm.tm_sec);
+        err = open_file(log, O_RDWR|O_CREAT|O_APPEND);
+        if (err == -1) {
+            printk("%s: file[%s] open error!!\n", __func__, log);
+        }
+        else {
+            fs = get_fs();
+            set_fs(get_fs());
+
+            schedule_delayed_work(&report_log_work, msecs_to_jiffies(thermal_log_polling_time));
+            record_thermal_on = 1;
+            printk("%s : Start to record thermal log\n", __func__);
+        }
+    }
+    else if (!enable_record_thermal && record_thermal_on){
+        cancel_delayed_work_sync(&report_log_work);
+        record_thermal_on = 0;
+        print_thermal_name = 0;
+        if (pfile) {
+            filp_close(pfile, NULL);
+            set_fs(fs);
+        }
+        printk("%s : Stop to record thermal log\n", __func__);
+    }
+
+    return count;
+}
+
+static ssize_t
+thermal_log_polling_show(struct class *c,
+        struct class_attribute *attr,
+        char *buf)
+{
+	return sprintf(buf, "%d\n", thermal_log_polling_time/1000);
+}
+
+static ssize_t
+thermal_log_polling_store(struct class *c,
+        struct class_attribute *attr,
+        const char *buf,
+        size_t count)
+{
+    unsigned long polling_time;
+
+    if (strict_strtoul(buf, 10, &polling_time)) {
+        return -EINVAL;
+    }
+    else thermal_log_polling_time = (int) polling_time * 1000;
+
+    return count;
+}
+
+static struct class_attribute pbp5_thermal_log_attrs[] = {
+__ATTR(record_thermal, 0664, record_thermal_show, record_thermal_store),
+__ATTR(record_thermal_polling, 0664, thermal_log_polling_show, thermal_log_polling_store),
+__ATTR_NULL
+};
+
 static struct class thermal_class = {
 	.name = "thermal",
 	.dev_release = thermal_release,
+    .class_attrs = pbp5_thermal_log_attrs,
 };
 
 /**
@@ -1756,6 +1928,7 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	int result;
 	int count;
 	int passive = 0;
+
 
 	if (type && strlen(type) >= THERMAL_NAME_LENGTH)
 		return ERR_PTR(-EINVAL);
@@ -2158,12 +2331,16 @@ static int __init thermal_init(void)
 		goto error;
 
 	result = class_register(&thermal_class);
-	if (result)
+	if (result) {
+        printk("Class thermal register fail\n");
 		goto unregister_governors;
+    }
 
 	result = genetlink_init();
 	if (result)
 		goto unregister_class;
+
+    INIT_DELAYED_WORK(&report_log_work, pbp5_thermal_report);
 
 	return 0;
 

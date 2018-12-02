@@ -785,7 +785,7 @@ bool tegra_dc_hpd(struct tegra_dc *dc);
 
 void tegra_dc_get_fbvblank(struct tegra_dc *dc, struct fb_vblank *vblank);
 int tegra_dc_wait_for_vsync(struct tegra_dc *dc);
-void tegra_dc_blank(struct tegra_dc *dc);
+void tegra_dc_blank(struct tegra_dc *dc, unsigned windows);
 
 void tegra_dc_enable(struct tegra_dc *dc);
 void tegra_dc_disable(struct tegra_dc *dc);
@@ -801,6 +801,7 @@ void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val);
  */
 int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n);
 int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
+void tegra_dc_disable_window(struct tegra_dc *dc, unsigned win);
 int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable);
 bool tegra_dc_is_within_n_vsync(struct tegra_dc *dc, s64 ts);
 bool tegra_dc_does_vsync_separate(struct tegra_dc *dc, s64 new_ts, s64 old_ts);

@@ -1,7 +1,7 @@
 /*
  * palmas-poweroff.c : Power off and reset for Palma device.
  *
- * Copyright (c) 2013, NVIDIA Corporation.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  *
@@ -40,28 +40,69 @@ struct palmas_pm {
 	int int_mask_val[PALMAS_MAX_INTERRUPT_MASK_REG];
 	bool need_rtc_power_on;
 	bool need_usb_event_power_on;
+    bool need_vac_acok_power_on;
 };
 
 static void palmas_auto_power_on(struct palmas_pm *palmas_pm)
 {
 	struct palmas *palmas = palmas_pm->palmas;
 	int ret;
+	int val;
 
-	dev_info(palmas_pm->dev, "Resetting Palmas through RTC\n");
+	pr_info("need_rtc = %d\n", palmas_pm->need_rtc_power_on);
+	pr_info("need_usb_event = %d\n", palmas_pm->need_usb_event_power_on);
+	pr_info("need_vac_acok = %d\n", palmas_pm->need_vac_acok_power_on);
 
 	ret = palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 			PALMAS_SWOFF_COLDRST, PALMAS_SWOFF_COLDRST_SW_RST, 0x0);
+
 	if (ret < 0) {
 		dev_err(palmas_pm->dev, "SWOFF_COLDRST update failed: %d\n",
 			ret);
 		goto scrub;
 	}
 
-	ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
+    if (palmas_pm->need_rtc_power_on) {
+	    ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
 			PALMAS_INT2_MASK, PALMAS_INT2_MASK_RTC_TIMER, 0);
-	if (ret < 0) {
-		dev_err(palmas_pm->dev, "INT2_MASK update failed: %d\n", ret);
-		goto scrub;
+	    if (ret < 0) {
+		    dev_err(palmas_pm->dev, "INT2_MASK update failed: %d\n", ret);
+		    goto scrub;
+	    }
+    }
+	else {
+		ret = palmas_read(palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT2_MASK,
+			&val);
+		if (!(val & PALMAS_INT2_MASK_RTC_ALARM)) {
+			ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
+					PALMAS_INT2_MASK,
+					PALMAS_INT2_MASK_RTC_ALARM,
+					PALMAS_INT2_MASK_RTC_ALARM);
+			if (ret < 0) {
+				dev_err(palmas_pm->dev, "INT2_MASK update failed: %d\n",
+								ret);
+				goto scrub;
+			}
+		}
+
+		ret = palmas_read(palmas, PALMAS_RTC_BASE,
+			PALMAS_RTC_INTERRUPTS_REG,
+			&val);
+
+		if (val & PALMAS_RTC_INTERRUPTS_REG_IT_ALARM) {
+			dev_info(palmas_pm->dev, "PMU Alarm Register had been set...\n");
+
+			ret = palmas_update_bits(palmas, PALMAS_RTC_BASE,
+					PALMAS_RTC_INTERRUPTS_REG,
+					PALMAS_RTC_INTERRUPTS_REG_IT_ALARM,
+					0);
+			if (ret < 0) {
+				dev_err(palmas_pm->dev, "REG_IT_ALARM, update failed: %d\n",
+								ret);
+				goto scrub;
+			}
+		}
 	}
 
 	if (palmas_pm->need_usb_event_power_on) {
@@ -75,13 +116,35 @@ static void palmas_auto_power_on(struct palmas_pm *palmas_pm)
 		}
 	}
 
+    if (palmas_pm->need_vac_acok_power_on) {
+	    ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT2_MASK, PALMAS_INT2_MASK_VAC_ACOK, 0);
+	    if (ret < 0) {
+		    dev_err(palmas_pm->dev,
+                "INT2_MASK update PALMAS_INT2_MASK_VAC_ACOK failed: %d\n", ret);
+		    goto scrub;
+	    }
+    }
+
+	palmas_write(palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT1_MASK, 0xf8);
+
+	palmas_write(palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT3_MASK, 0x7f);
+
+	palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
+				PALMAS_DEV_CTRL, 1, 0);
+
+/*
 	ret = palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 			PALMAS_DEV_CTRL, PALMAS_DEV_CTRL_SW_RST,
 			PALMAS_DEV_CTRL_SW_RST);
+
 	if (ret < 0) {
 		dev_err(palmas_pm->dev, "DEV_CTRL update failed: %d\n", ret);
 		goto scrub;
 	}
+*/
 
 	while (1)
 		dev_err(palmas_pm->dev, "Device should not be here\n");
@@ -97,10 +160,13 @@ static void palmas_power_off(void *drv_data)
 	int i;
 	int ret;
 
+	dev_info(palmas_pm->dev, "%s\n", __func__);
 	palmas_allow_atomic_xfer(palmas);
 
-	if (palmas_pm->need_rtc_power_on)
+	if (palmas_pm->need_rtc_power_on || palmas_pm->need_vac_acok_power_on)
 		palmas_auto_power_on(palmas_pm);
+
+	dev_info(palmas_pm->dev, "Powering off process start...\n");
 
 	for (i = 0; i < palmas_pm->num_int_mask_regs; ++i) {
 		ret = palmas_write(palmas, PALMAS_INTERRUPT_BASE,
@@ -146,6 +212,7 @@ static void palmas_power_reset(void *drv_data)
 	unsigned int val;
 	int i;
 	int ret;
+	int num_of_retries = 5;
 
 	palmas_allow_atomic_xfer(palmas);
 
@@ -165,6 +232,13 @@ static void palmas_power_reset(void *drv_data)
 				"register 0x%02x read failed: %d\n",
 				palmas_pm->int_status_reg_add[i], ret);
 	}
+
+	/* Not mask all COLD RST condition*/
+	ret = palmas_write(palmas, PALMAS_PMU_CONTROL_BASE,
+			PALMAS_SWOFF_COLDRST, 0xFF);
+	if (ret < 0)
+			dev_err(palmas_pm->dev,
+				"register PALMAS_SWOFF_COLDRST write failed:\n");
 
 	/* SW-WAR for ES Version 2.1, 2.0 and 1.0 */
 	if (palmas_is_es_version_or_less(palmas, 2, 1)) {
@@ -218,7 +292,18 @@ static void palmas_power_reset(void *drv_data)
 reset_direct:
 	dev_info(palmas_pm->dev, "Power reset the device\n");
 	palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
+			PALMAS_SWOFF_COLDRST, PALMAS_SWOFF_COLDRST_SW_RST,
+			PALMAS_SWOFF_COLDRST_SW_RST);
+	while (num_of_retries--) {
+		ret = palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 				PALMAS_DEV_CTRL, 0x2, 0x2);
+		if (ret < 0)
+			dev_err(palmas_pm->dev, "PALMAS_DEV_CTRL update failed: %d ...retrying %d\n",
+				ret, num_of_retries);
+		else
+			dev_info(palmas_pm->dev, " Retrying... %d\n",
+				num_of_retries);
+	}
 }
 
 static int palmas_configure_power_on(void *drv_data,
@@ -234,6 +319,10 @@ static int palmas_configure_power_on(void *drv_data,
 
 	case SYSTEM_PMIC_USB_VBUS_INSERTION:
 		palmas_pm->need_usb_event_power_on = true;
+		break;
+
+	case SYSTEM_PMIC_VAC_ACOK:
+		palmas_pm->need_vac_acok_power_on = true;
 		break;
 
 	default:

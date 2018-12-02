@@ -24,7 +24,7 @@
 #include <linux/tegra_profiler.h>
 
 #include "quadd.h"
-#include "armv7_pmu.h"
+#include "arm_pmu.h"
 #include "hrt.h"
 #include "comm.h"
 #include "mmap.h"
@@ -35,6 +35,12 @@
 #include "version.h"
 #include "quadd_proc.h"
 #include "eh_unwind.h"
+
+#ifdef CONFIG_ARM64
+#include "armv8_pmu.h"
+#else
+#include "armv7_pmu.h"
+#endif
 
 #ifdef CONFIG_CACHE_L2X0
 #include "pl310.h"
@@ -152,7 +158,14 @@ static inline int is_event_supported(struct source_info *si, int event)
 	return 0;
 }
 
-static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
+static int
+validate_freq(unsigned int freq)
+{
+	return freq >= 100 && freq <= 100000;
+}
+
+static int
+set_parameters(struct quadd_parameters *p, uid_t *debug_app_uid)
 {
 	int i, err;
 	int pmu_events_id[QUADD_MAX_COUNTERS];
@@ -162,37 +175,38 @@ static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
 	struct task_struct *task;
 	unsigned int extra;
 
-	if (ctx.param.freq != 100 && ctx.param.freq != 1000 &&
-	    ctx.param.freq != 10000)
+	if (!validate_freq(p->freq)) {
+		pr_err("%s: incorrect frequency: %u\n", __func__, p->freq);
 		return -EINVAL;
+	}
 
-	ctx.param.freq = param->freq;
-	ctx.param.ma_freq = param->ma_freq;
-	ctx.param.backtrace = param->backtrace;
-	ctx.param.use_freq = param->use_freq;
-	ctx.param.system_wide = param->system_wide;
-	ctx.param.power_rate_freq = param->power_rate_freq;
-	ctx.param.debug_samples = param->debug_samples;
+	ctx.param.freq = p->freq;
+	ctx.param.ma_freq = p->ma_freq;
+	ctx.param.backtrace = p->backtrace;
+	ctx.param.use_freq = p->use_freq;
+	ctx.param.system_wide = p->system_wide;
+	ctx.param.power_rate_freq = p->power_rate_freq;
+	ctx.param.debug_samples = p->debug_samples;
 
-	for (i = 0; i < ARRAY_SIZE(param->reserved); i++)
-		ctx.param.reserved[i] = param->reserved[i];
+	for (i = 0; i < ARRAY_SIZE(p->reserved); i++)
+		ctx.param.reserved[i] = p->reserved[i];
 
 	/* Currently only one process */
-	if (param->nr_pids != 1)
+	if (p->nr_pids != 1)
 		return -EINVAL;
 
 	rcu_read_lock();
-	task = pid_task(find_vpid(param->pids[0]), PIDTYPE_PID);
+	task = pid_task(find_vpid(p->pids[0]), PIDTYPE_PID);
 	rcu_read_unlock();
 	if (!task) {
-		pr_err("Process not found: %u\n", param->pids[0]);
+		pr_err("Process not found: %u\n", p->pids[0]);
 		return -ESRCH;
 	}
 
 	pr_info("owner/task uids: %u/%u\n", current_fsuid(), task_uid(task));
 	if (!capable(CAP_SYS_ADMIN)) {
 		if (current_fsuid() != task_uid(task)) {
-			uid = quadd_auth_check_debug_flag(param->package_name);
+			uid = quadd_auth_is_debuggable((char *)p->package_name);
 			if (uid < 0) {
 				pr_err("Error: QuadD security service\n");
 				return uid;
@@ -209,24 +223,24 @@ static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
 		ctx.collect_kernel_ips = 1;
 	}
 
-	for (i = 0; i < param->nr_pids; i++)
-		ctx.param.pids[i] = param->pids[i];
+	for (i = 0; i < p->nr_pids; i++)
+		ctx.param.pids[i] = p->pids[i];
 
-	ctx.param.nr_pids = param->nr_pids;
+	ctx.param.nr_pids = p->nr_pids;
 
-	for (i = 0; i < param->nr_events; i++) {
-		int event = param->events[i];
+	for (i = 0; i < p->nr_events; i++) {
+		int event = p->events[i];
 
 		if (ctx.pmu && ctx.pmu_info.nr_supported_events > 0
 			&& is_event_supported(&ctx.pmu_info, event)) {
-			pmu_events_id[nr_pmu++] = param->events[i];
+			pmu_events_id[nr_pmu++] = p->events[i];
 
 			pr_info("PMU active event: %s\n",
 				quadd_get_event_str(event));
 		} else if (ctx.pl310 &&
 			   ctx.pl310_info.nr_supported_events > 0 &&
 			   is_event_supported(&ctx.pl310_info, event)) {
-			pl310_events_id = param->events[i];
+			pl310_events_id = p->events[i];
 
 			pr_info("PL310 active event: %s\n",
 				quadd_get_event_str(event));
@@ -270,13 +284,16 @@ static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
 		}
 	}
 
-	extra = param->reserved[QUADD_PARAM_IDX_EXTRA];
+	extra = p->reserved[QUADD_PARAM_IDX_EXTRA];
 
 	if (extra & QUADD_PARAM_EXTRA_BT_UNWIND_TABLES)
 		pr_info("unwinding: exception-handling tables\n");
 
 	if (extra & QUADD_PARAM_EXTRA_BT_FP)
 		pr_info("unwinding: frame pointers\n");
+
+	if (extra & QUADD_PARAM_EXTRA_BT_MIXED)
+		pr_info("unwinding: mixed mode\n");
 
 	quadd_unwind_start(task);
 
@@ -406,6 +423,14 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 	extra |= QUADD_COMM_CAP_EXTRA_BT_KERNEL_CTX;
 	extra |= QUADD_COMM_CAP_EXTRA_GET_MMAP;
 	extra |= QUADD_COMM_CAP_EXTRA_GROUP_SAMPLES;
+	extra |= QUADD_COMM_CAP_EXTRA_BT_UNWIND_TABLES;
+	extra |= QUADD_COMM_CAP_EXTRA_SUPPORT_AARCH64;
+	extra |= QUADD_COMM_CAP_EXTRA_SPECIAL_ARCH_MMAP;
+	extra |= QUADD_COMM_CAP_EXTRA_UNWIND_MIXED;
+	extra |= QUADD_COMM_CAP_EXTRA_UNW_ENTRY_TYPE;
+
+	if (ctx.hrt->tc)
+		extra |= QUADD_COMM_CAP_EXTRA_ARCH_TIMER;
 
 	cap->reserved[QUADD_COMM_CAP_IDX_EXTRA] = extra;
 }
@@ -426,9 +451,16 @@ void quadd_get_state(struct quadd_module_state *state)
 }
 
 static int
-set_extab(struct quadd_extables *extabs)
+set_extab(struct quadd_extables *extabs,
+	  struct quadd_extabs_mmap *mmap)
 {
-	return quadd_unwind_set_extab(extabs);
+	return quadd_unwind_set_extab(extabs, mmap);
+}
+
+static void
+delete_mmap(struct quadd_extabs_mmap *mmap)
+{
+	quadd_unwind_delete_mmap(mmap);
 }
 
 static struct quadd_comm_control_interface control = {
@@ -438,6 +470,7 @@ static struct quadd_comm_control_interface control = {
 	.get_capabilities	= get_capabilities,
 	.get_state		= quadd_get_state,
 	.set_extab		= set_extab,
+	.delete_mmap		= delete_mmap,
 };
 
 static int __init quadd_module_init(void)
@@ -462,7 +495,11 @@ static int __init quadd_module_init(void)
 	ctx.pmu_info.active = 0;
 	ctx.pl310_info.active = 0;
 
+#ifdef CONFIG_ARM64
+	ctx.pmu = quadd_armv8_pmu_init();
+#else
 	ctx.pmu = quadd_armv7_pmu_init();
+#endif
 	if (!ctx.pmu) {
 		pr_err("PMU init failed\n");
 		return -ENODEV;
@@ -545,8 +582,13 @@ static void __exit quadd_module_exit(void)
 	quadd_comm_events_exit();
 	quadd_auth_deinit();
 	quadd_proc_deinit();
-	quadd_armv7_pmu_deinit();
 	quadd_unwind_deinit();
+
+#ifdef CONFIG_ARM64
+	quadd_armv8_pmu_deinit();
+#else
+	quadd_armv7_pmu_deinit();
+#endif
 }
 
 module_init(quadd_module_init);

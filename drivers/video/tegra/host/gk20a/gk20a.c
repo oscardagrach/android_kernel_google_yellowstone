@@ -1020,6 +1020,9 @@ static int gk20a_probe(struct platform_device *dev)
 #endif
 
 	err = nvhost_client_device_init(dev);
+
+	spin_lock_init(&gk20a->mc_enable_lock);
+
 	if (err) {
 		nvhost_dbg_fn("failed to init client device for %s",
 			      dev->name);

@@ -46,6 +46,7 @@ static struct sysedp_consumer_data shield_sysedp_consumer_data[] = {
 	SYSEDP_CONSUMER_DATA("speaker", speaker_states),
 	SYSEDP_CONSUMER_DATA("wifi", wifi_states),
 	SYSEDP_CONSUMER_DATA("pwm-backlight", pwm_backlight_states),
+	SYSEDP_CONSUMER_DATA("sdhci-tegra.0", sdhci_states),
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.2", sdhci_states),
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.3", sdhci_states),
 	/* TODO SYSEDP_CONSUMER_DATA("as364x", as364x_states), */
@@ -75,7 +76,8 @@ void __init shield_new_sysedp_init(void)
 static struct sysedp_batmon_ibat_lut shield_ibat_lut[] = {
 /*-- temp in deci-C, current in milli ampere --*/
 	{  600, 9750 },
-	{ -300, 9750 }
+	{ -300, 9750 },
+	{    0,    0 },
 };
 
 /* Values for Leyden HY-LDN-N-TD battery */
@@ -86,7 +88,7 @@ static int rbat_data[] = {  100000, 120000, 140000, 170000, 190000,  210000, /* 
 			    110000, 130000, 160000, 170000, 200000,  210000, /*  10% */
 			    120000, 140000, 170000, 180000, 210000,  220000, /*   0% */
 };
-static int rbat_temp_axis[] = { 45, 23, 10, 5, 0, -20 };
+static int rbat_temp_axis[] = { 450, 230, 100, 50, 0, -200 };
 static int rbat_capacity_axis[] = { 100, 55, 50, 10, 0 };
 
 struct sysedp_batmon_rbat_lut shield_rbat_lut = {
@@ -124,7 +126,7 @@ static struct sysedp_batmon_ocv_lut shield_ocv_lut[] = {
 };
 
 static struct sysedp_batmon_calc_platform_data shield_batmon_pdata = {
-	.power_supply = "sbs-battery",
+	.power_supply = "battery",
 	.r_const = 70000,    /* in micro ohm */
 	.vsys_min = 5880000, /* in micro volt*/
 	.ibat_lut = shield_ibat_lut,

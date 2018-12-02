@@ -62,7 +62,7 @@ static u32 bw_calc_freqs[] = {
 
 /* LPDDR3 table */
 static u32 tegra12_lpddr3_emc_usage_shared_os_idle[] = {
-	18, 29, 43, 48, 51, 61, 62, 66, 71, 74, 70, 60, 50
+	18, 29, 39, 39, 19, 39, 39, 66, 71, 74, 70, 60, 50
 };
 static u32 tegra12_lpddr3_emc_usage_shared_general[] = {
 	17, 25, 35, 43, 50, 50, 50, 50, 50, 50, 50, 50, 45
@@ -1379,7 +1379,9 @@ static int init_emc_table(const struct tegra12_emc_table *table,
 	if (!table || !table_size) {
 		pr_err("tegra: EMC DFS table is empty\n");
 		return -ENODATA;
-	}
+	} else {
+        pr_info("tegra12_emc_table exists\n");
+    }
 
 	boot_rate = clk_get_rate(emc) / 1000;
 	max_rate = boot_rate;
@@ -1634,6 +1636,9 @@ static int tegra12_emc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "missing platform data\n");
 		return -ENODATA;
 	}
+    else {
+        printk("[PBP5] : tegra12_emc platform data exists\n");
+    }
 
 	return init_emc_table(pdata->tables, pdata->tables_derated,
 			      pdata->num_tables);
@@ -1794,7 +1799,7 @@ int tegra_emc_set_over_temp_state(unsigned long state)
 
 	spin_unlock_irqrestore(&emc_access_lock, flags);
 
-	pr_debug("[emc] %s: temp_state: %lu  - selected %s table\n",
+	pr_info("[emc] %s: temp_state: %lu  - selected %s table\n",
 		__func__, dram_over_temp_state,
 		new_table == tegra_emc_table ? "regular" : "derated");
 

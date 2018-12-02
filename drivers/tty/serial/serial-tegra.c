@@ -171,7 +171,7 @@ static unsigned int tegra_uart_get_mctrl(struct uart_port *u)
 	 */
 	if (tup->enable_modem_interrupt)
 		return TIOCM_RI | TIOCM_CD | TIOCM_DSR | TIOCM_CTS;
-	return TIOCM_CTS;
+	return TIOCM_CD | TIOCM_CTS;
 }
 
 static void set_rts(struct tegra_uart_port *tup, bool active)
@@ -322,18 +322,18 @@ static char tegra_uart_decode_rx_error(struct tegra_uart_port *tup,
 			/* Overrrun error */
 			flag |= TTY_OVERRUN;
 			tup->uport.icount.overrun++;
-			dev_err(tup->uport.dev, "Got overrun errors\n");
+			dev_err_ratelimited(tup->uport.dev, "Got overrun errors\n");
 		} else if (lsr & UART_LSR_PE) {
 			/* Parity error */
 			flag |= TTY_PARITY;
 			tup->uport.icount.parity++;
-			dev_err(tup->uport.dev, "Got Parity errors\n");
+			dev_err_ratelimited(tup->uport.dev, "Got Parity errors\n");
 		} else if (lsr & UART_LSR_FE) {
 			flag |= TTY_FRAME;
 			tup->uport.icount.frame++;
-			dev_err(tup->uport.dev, "Got frame errors\n");
+			dev_err_ratelimited(tup->uport.dev, "Got frame errors\n");
 		} else if (lsr & UART_LSR_BI) {
-			dev_err(tup->uport.dev, "Got Break\n");
+			dev_err_ratelimited(tup->uport.dev, "Got Break\n");
 			tup->uport.icount.brk++;
 			/* If FIFO read error without any data, reset Rx FIFO */
 			if (!(lsr & UART_LSR_DR) && (lsr & UART_LSR_FIFOE))
@@ -540,16 +540,12 @@ static void tegra_uart_copy_rx_to_tty(struct tegra_uart_port *tup,
 		dev_err(tup->uport.dev, "No tty port\n");
 		return;
 	}
-	dma_sync_single_for_cpu(tup->uport.dev, tup->rx_dma_buf_phys,
-				TEGRA_UART_RX_DMA_BUFFER_SIZE, DMA_FROM_DEVICE);
 	copied = tty_insert_flip_string(tty,
 			((unsigned char *)(tup->rx_dma_buf_virt)), count);
 	if (copied != count) {
 		WARN_ON(1);
 		dev_err(tup->uport.dev, "RxData copy to tty layer failed\n");
 	}
-	dma_sync_single_for_device(tup->uport.dev, tup->rx_dma_buf_phys,
-				TEGRA_UART_RX_DMA_BUFFER_SIZE, DMA_TO_DEVICE);
 }
 
 static void tegra_uart_rx_dma_complete(void *args)
@@ -573,11 +569,11 @@ static void tegra_uart_rx_dma_complete(void *args)
 		tegra_uart_copy_rx_to_tty(tup, port, count);
 
 	tegra_uart_handle_rx_pio(tup, port);
+	tegra_uart_start_rx_dma(tup);
 	if (tty) {
 		tty_flip_buffer_push(port);
 		tty_kref_put(tty);
 	}
-	tegra_uart_start_rx_dma(tup);
 
 	/* Activate flow control to start transfer */
 	if (tup->rts_active)
@@ -607,11 +603,11 @@ static void tegra_uart_handle_rx_dma(struct tegra_uart_port *tup)
 		tegra_uart_copy_rx_to_tty(tup, port, count);
 
 	tegra_uart_handle_rx_pio(tup, port);
+	tegra_uart_start_rx_dma(tup);
 	if (tty) {
 		tty_flip_buffer_push(port);
 		tty_kref_put(tty);
 	}
-	tegra_uart_start_rx_dma(tup);
 
 	if (tup->rts_active)
 		set_rts(tup, true);
@@ -631,8 +627,6 @@ static int tegra_uart_start_rx_dma(struct tegra_uart_port *tup)
 
 	tup->rx_dma_desc->callback = tegra_uart_rx_dma_complete;
 	tup->rx_dma_desc->callback_param = tup;
-	dma_sync_single_for_device(tup->uport.dev, tup->rx_dma_buf_phys,
-				count, DMA_TO_DEVICE);
 	tup->rx_bytes_requested = count;
 	tup->rx_cookie = dmaengine_submit(tup->rx_dma_desc);
 	dma_async_issue_pending(tup->rx_dma_chan);

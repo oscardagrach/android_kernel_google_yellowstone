@@ -32,12 +32,13 @@
 #include <linux/syscore_ops.h>
 #include <linux/uaccess.h>
 #include <linux/pinctrl/pinctrl-tegra.h>
-
 #include <mach/pinconf-tegra.h>
 #include <mach/pinmux-defines.h>
+#include <mach/gpio-tegra.h>
 
 #include "core.h"
 #include "pinctrl-tegra.h"
+#include <../mach-tegra/common.h>
 
 static DEFINE_SPINLOCK(mux_lock);
 
@@ -967,6 +968,21 @@ int tegra_pinctrl_probe(struct platform_device *pdev,
 	register_syscore_ops(&pinctrl_syscore_ops);
 #endif
 	dev_dbg(&pdev->dev, "Probed Tegra pinctrl driver\n");
+
+    switch (get_cci_hw_id()){
+        case EVT:
+        case DVT_DEMO:
+        case DVT1_1:
+        case DVT1_2:
+        case DVT2:
+            break;
+        case DVT3:
+        case PVT:
+            yellowstone_pinmux_init();
+            break;
+        default:
+            break;
+    }
 
 	return 0;
 }

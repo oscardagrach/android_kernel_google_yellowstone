@@ -3,7 +3,7 @@
  *
  * User-space interface to nvmap
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -681,8 +681,9 @@ int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma)
 	priv->handle = h;
 	atomic_set(&priv->count, 1);
 
-	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
-			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
+	vma->vm_flags |= VM_SHARED | VM_DONTEXPAND |
+			  VM_DONTDUMP | VM_DONTCOPY |
+			  (h->heap_pgalloc ? 0 : VM_PFNMAP);
 	vma->vm_ops = &nvmap_vma_ops;
 	BUG_ON(vma->vm_private_data != NULL);
 	vma->vm_private_data = priv;
@@ -707,8 +708,8 @@ static int nvmap_map(struct file *filp, struct vm_area_struct *vma)
 	priv->handle = NULL;
 	atomic_set(&priv->count, 1);
 
-	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
-			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
+	vma->vm_flags |= (VM_SHARED | VM_DONTEXPAND |
+			  VM_DONTDUMP | VM_DONTCOPY);
 	vma->vm_ops = &nvmap_vma_ops;
 	vma->vm_private_data = priv;
 
@@ -741,14 +742,14 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		err = -ENODEV;
 		break;
 	case NVMAP_IOC_CREATE:
-	case NVMAP_IOC_FROM_ID:
 	case NVMAP_IOC_FROM_FD:
 		err = nvmap_ioctl_create(filp, cmd, uarg);
 		break;
 
+	case NVMAP_IOC_FROM_ID:
 	case NVMAP_IOC_GET_ID:
-		err = nvmap_ioctl_getid(filp, uarg);
-		break;
+		pr_warn_once("nvmap: unsupported FROM_ID/GET_ID IOCTLs used.\n");
+		return -ENOTTY;
 
 	case NVMAP_IOC_GET_FD:
 		err = nvmap_ioctl_getfd(filp, uarg);
@@ -786,6 +787,10 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case NVMAP_IOC_CACHE:
 		err = nvmap_ioctl_cache_maint(filp, uarg);
+		break;
+
+	case NVMAP_IOC_CACHE_LIST:
+		err = nvmap_ioctl_cache_maint_list(filp, uarg);
 		break;
 
 	case NVMAP_IOC_SHARE:

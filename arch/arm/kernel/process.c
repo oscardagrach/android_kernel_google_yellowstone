@@ -33,6 +33,7 @@
 #include <linux/cpuidle.h>
 #include <linux/leds.h>
 #include <linux/console.h>
+#include <linux/power/reset/system-pmic.h>
 
 #include <asm/cacheflush.h>
 #include <asm/idmap.h>
@@ -272,12 +273,20 @@ void machine_halt(void)
  */
 void machine_power_off(void)
 {
+	int ret;
 	local_irq_disable();
 	preempt_disable();
 	smp_send_stop();
 
-	if (pm_power_off)
+	if (pm_power_off) {
+		ret = system_pmic_set_power_on_event(SYSTEM_PMIC_VAC_ACOK,
+						NULL);
+		if (ret < 0) {
+			printk("[PBP5] : Setting power on event failed: %d\n",
+				ret);
+		}
 		pm_power_off();
+	}
 }
 
 /*

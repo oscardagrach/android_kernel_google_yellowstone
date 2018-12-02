@@ -1287,13 +1287,12 @@ static void tegra_sdhci_clock_set_parent(struct sdhci_host *host,
 	if ((pll_c_freq > desired_rate) && (pll_p_freq > desired_rate)) {
 		if (pll_p_freq <= pll_c_freq) {
 			desired_rate = pll_p_freq;
-			parent_clk = pll_p;
+			pll_c_freq = 0;
 		} else {
 			desired_rate = pll_c_freq;
-			parent_clk = pll_c;
+			pll_p_freq = 0;
 		}
 		rc = clk_set_rate(pltfm_host->clk, desired_rate);
-		goto set_clk_parent;
 	}
 
 	if (pll_c_freq > pll_p_freq) {
@@ -1309,7 +1308,6 @@ static void tegra_sdhci_clock_set_parent(struct sdhci_host *host,
 	} else
 		return;
 
-set_clk_parent:
 	rc = clk_set_parent(pltfm_host->clk, parent_clk);
 	if (rc)
 		pr_err("%s: failed to set pll parent clock %d\n",
@@ -1339,6 +1337,9 @@ static void tegra_sdhci_set_clk_rate(struct sdhci_host *sdhci,
 	} else {
 		clk_rate = clock;
 	}
+
+	if (sdhci->mmc->ios.timing == MMC_TIMING_UHS_SDR50)
+		clk_rate = tegra_host->soc_data->tuning_freq_list[0];
 
 	if (tegra_host->max_clk_limit &&
 		(clk_rate > tegra_host->max_clk_limit))
@@ -2051,8 +2052,8 @@ static int sdhci_tegra_issue_tuning_cmd(struct sdhci_host *sdhci)
 		err = 0;
 		sdhci->tuning_done = 1;
 	} else {
-		tegra_sdhci_reset(sdhci, SDHCI_RESET_CMD);
 		tegra_sdhci_reset(sdhci, SDHCI_RESET_DATA);
+		tegra_sdhci_reset(sdhci, SDHCI_RESET_CMD);
 		err = -EIO;
 	}
 
@@ -3601,6 +3602,7 @@ static const struct sdhci_ops tegra_sdhci_ops = {
 static struct sdhci_pltfm_data sdhci_tegra12_pdata = {
 	.quirks = TEGRA_SDHCI_QUIRKS,
 	.quirks2 = TEGRA_SDHCI_QUIRKS2 |
+		SDHCI_QUIRK2_HOST_OFF_CARD_ON |
 		SDHCI_QUIRK2_SUPPORT_64BIT_DMA,
 	.ops  = &tegra_sdhci_ops,
 };

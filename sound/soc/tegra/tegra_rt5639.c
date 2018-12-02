@@ -43,6 +43,7 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include "../codecs/rt5639.h"
+#include "../codecs/rt5640.h"
 
 #include "tegra_pcm.h"
 #include "tegra_asoc_utils.h"
@@ -50,7 +51,7 @@
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
 
-#define DRV_NAME "tegra-snd-rt5639"
+#define DRV_NAME "tegra-snd-rt5640"
 
 #define DAI_LINK_HIFI		0
 #define DAI_LINK_SPDIF		1
@@ -727,13 +728,13 @@ static int tegra_rt5639_jack_notifier(struct notifier_block *self,
 	unsigned char status_jack = 0;
 
 	if (jack == &tegra_rt5639_hp_jack) {
-		if (action) {
+		if (!action) {
 			/* Enable ext mic; enable signal is active-low */
 			if (gpio_is_valid(pdata->gpio_ext_mic_en))
 				gpio_direction_output(
 				pdata->gpio_ext_mic_en, 0);
 
-			status_jack = rt5639_headset_detect(codec, 1);
+			status_jack = rt5640_headset_detect(codec, 1);
 
 			machine->jack_status &= ~SND_JACK_HEADPHONE;
 			machine->jack_status &= ~SND_JACK_MICROPHONE;
@@ -753,7 +754,7 @@ static int tegra_rt5639_jack_notifier(struct notifier_block *self,
 				gpio_direction_output(
 				pdata->gpio_ext_mic_en, 1);
 
-			rt5639_headset_detect(codec, 0);
+			rt5640_headset_detect(codec, 0);
 
 			machine->jack_status &= ~SND_JACK_HEADPHONE;
 			machine->jack_status &= ~SND_JACK_MICROPHONE;
@@ -963,12 +964,12 @@ static int tegra_rt5639_init(struct snd_soc_pcm_runtime *rtd)
 
 static struct snd_soc_dai_link tegra_rt5639_dai[NUM_DAI_LINKS] = {
 	[DAI_LINK_HIFI] = {
-		.name = "rt5639",
-		.stream_name = "rt5639 PCM",
-		.codec_name = "rt5639.0-001a",
+		.name = "rt5640",
+		.stream_name = "rt5640 PCM",
+		.codec_name = "rt5640.0-001a",
 		.platform_name = "tegra-pcm-audio",
 		.cpu_dai_name = "tegra30-i2s.1",
-		.codec_dai_name = "rt5639-aif1",
+		.codec_dai_name = "rt5640-aif1",
 		.init = tegra_rt5639_init,
 		.ops = &tegra_rt5639_ops,
 		.ignore_pmdown_time = 1,
@@ -996,9 +997,9 @@ static struct snd_soc_dai_link tegra_rt5639_dai[NUM_DAI_LINKS] = {
 	[DAI_LINK_VOICE_CALL] = {
 		.name = "VOICE CALL",
 		.stream_name = "VOICE CALL PCM",
-		.codec_name = "rt5639.0-001c",
+		.codec_name = "rt5640.0-001c",
 		.cpu_dai_name = "dit-hifi",
-		.codec_dai_name = "rt5639-aif1",
+		.codec_dai_name = "rt5640-aif1",
 		.ops = &tegra_rt5639_voice_call_ops,
 		.ignore_pmdown_time = 1,
 	},

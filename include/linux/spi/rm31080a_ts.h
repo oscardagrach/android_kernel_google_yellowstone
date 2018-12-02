@@ -1,8 +1,8 @@
 /*
  * Raydium RM31080 touchscreen header
  *
- * Copyright (C) 2012-2013, Raydium Semiconductor Corporation.
- * Copyright (C) 2012-2013, NVIDIA Corporation.  All Rights Reserved.
+ * Copyright (C) 2012-2014, Raydium Semiconductor Corporation.
+ * Copyright (C) 2012-2014, NVIDIA Corporation.  All Rights Reserved.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -13,17 +13,17 @@
 #ifndef _RM31080A_TS_H_
 #define _RM31080A_TS_H_
 
-
-
 /***************************************************************************
  *	Kernel CTRL Define
  *	DO NOT MODIFY
  *	NOTE: Need to sync with HAL
  ***************************************************************************/
-#define OK						1
-#define FAIL					0
+#define RETURN_OK				0
+#define RETURN_FAIL				1
+#define TRUE					1
+#define FALSE					0
 #define DEBUG_DRIVER			0x01
-#define DEBUG_DRIVER_REGISTER	0x02
+#define DEBUG_REGISTER			0x02
 
 #define RM_IOCTL_REPORT_POINT				0x1001
 #define RM_IOCTL_SET_HAL_PID				0x1002
@@ -34,6 +34,7 @@
 #define RM_IOCTL_READ_RAW_DATA				0x1007
 #define RM_IOCTL_SET_PARAMETER				0x100A
 #define RM_IOCTL_SET_VARIABLE				0x1010
+
 #define RM_VARIABLE_SELF_TEST_RESULT			0x01
 #define RM_VARIABLE_SCRIBER_FLAG				0x02
 #define RM_VARIABLE_AUTOSCAN_FLAG				0x03
@@ -46,14 +47,20 @@
 #define RM_VARIABLE_SET_WAKE_UNLOCK				0x0A
 #define RM_VARIABLE_DPW							0x0B
 #define RM_VARIABLE_NS_MODE						0x0C
+#define RM_VARIABLE_TOUCHFILE_STATUS            0x0D
+#define RM_VARIABLE_TOUCH_EVENT               0x0E
+#define RM_VARIABLE_SENSOR_SELECT               0x0F
+
+
 #define RM_IOCTL_GET_VARIABLE				0x1011
 #define RM_VARIABLE_PLATFORM_ID					0x01
 #define RM_VARIABLE_GPIO_SELECT					0x02
 #define RM_VARIABLE_CHECK_SPI_LOCK				0x03
-#define RM_VARIABLE_REPORT_MODE					0x04
 #define RM_IOCTL_GET_SACN_MODE				0x1012
 #define RM_IOCTL_SET_KRL_TBL				0x1013
 #define RM_IOCTL_WATCH_DOG					0x1014
+#define RM_IOCTL_SET_BASELINE				0x1015
+#define RM_IOCTL_INIT_SERVICE				0x1016
 
 #define RM_INPUT_RESOLUTION_X				4096
 #define RM_INPUT_RESOLUTION_Y				4096
@@ -90,6 +97,8 @@
 #define RM_PLATFORM_P140	0x07
 #define RM_PLATFORM_A010	0x08
 #define RM_PLATFORM_L005	0x09
+#define RM_PLATFORM_K156	0x0A
+#define RM_PLATFORM_T008	0x0B
 #define RM_PLATFORM_RAYPRJ	0x80
 
 /***************************************************************************
@@ -119,7 +128,9 @@
 #define KRL_INDEX_RM_WAITSCANOK			10
 #define KRL_INDEX_RM_SETREPTIME			11
 #define KRL_INDEX_RM_NSPARA				12
-#define KRL_INDEX_RM_SLOWSCANB			13
+#define KRL_INDEX_RM_WRITE_IMG			13
+#define KRL_INDEX_RM_TLK				14
+#define KRL_INDEX_RM_KL_TESTMODE			15
 
 #define KRL_SIZE_SET_IDLE				128
 #define KRL_SIZE_PAUSE_AUTO				64
@@ -129,12 +140,14 @@
 #define KRL_SIZE_RM_WATCHDOG			96
 #define KRL_SIZE_RM_TESTMODE			96
 #define KRL_SIZE_RM_SLOWSCAN			128
-#define KRL_SIZE_RM_SLOWSCANB			128
 #define KRL_SIZE_RM_CLEARINT			32
 #define KRL_SIZE_RM_SCANSTART			32
 #define KRL_SIZE_RM_WAITSCANOK			32
 #define KRL_SIZE_RM_SETREPTIME			32
 #define KRL_SIZE_RM_NS_PARA				64
+#define KRL_SIZE_RM_WRITE_IMAGE			64
+#define KRL_SIZE_RM_TLK                128
+#define KRL_SIZE_RM_KL_TESTMODE                128
 
 #define KRL_TBL_FIELD_POS_LEN_H				0
 #define KRL_TBL_FIELD_POS_LEN_L				1
@@ -152,6 +165,8 @@
 #define KRL_CMD_WRITE_W_COUNT				0x1C
 #define KRL_CMD_RETURN_RESULT				0x1D
 #define KRL_CMD_RETURN_VALUE				0x1E
+#define KRL_CMD_DRAM_INIT                   0x1F
+
 
 #define KRL_CMD_SEND_SIGNAL					0x20
 #define KRL_CMD_CONFIG_RST					0x21
@@ -184,6 +199,13 @@
 #define KRL_SUB_CMD_TIMER_QU					0x01
 
 #define KRL_CMD_READ_IMG					0x60
+#define KRL_CMD_WRITE_IMG					0x61
+
+#define KRL_CMD_CONFIG_IRQ					0x70
+#define KRL_SUB_CMD_SET_IRQ						0x00
+
+#define KRL_CMD_DUMMY						0xFF
+
 
 /***************************************************************************
  *	DO NOT MODIFY - Kernel Command Set
@@ -196,6 +218,10 @@
  *	DO NOT MODIFY
  *	NOTE: Need to sync with HAL
  ***************************************************************************/
+#define INPUT_PROTOCOL_TYPE_A	0x01
+#define INPUT_PROTOCOL_TYPE_B	0x02
+#define INPUT_PROTOCOL_CURRENT_SUPPORT INPUT_PROTOCOL_TYPE_A
+
 #define INPUT_POINT_RESET	0x80
 #define MAX_REPORT_TOUCHED_POINTS	10
 
@@ -206,29 +232,43 @@
 #define POINT_TYPE_THUMB		0x04
 #define POINT_TYPE_NUM			0x05
 
-#define EVENT_REPORT_MODE_STYLUS_ERASER_FINGER				0x00
-#define EVENT_REPORT_MODE_FINGER_ONLY						0x01
-#define EVENT_REPORT_MODE_STYLUS_ERASER_FINGER_WITH_WEIGHT	0x02
-#define EVENT_REPORT_MODE_STYLUS_FINGER						0x03
-#define EVENT_REPORT_MODE_STYLUS_ERASER						0x04
-#define EVENT_REPORT_MODE_STYLUS_ONLY						0x05
-#define EVENT_REPORT_MODE_ERASER_ONLY						0x06
-#define EVENT_REPORT_MODE_TYPE_NUM							0x07
+#define EVENT_REPORT_MODE_STYLUS_ERASER_FINGER		0x00
+#define EVENT_REPORT_MODE_FINGER_ONLY				0x01
+#define EVENT_REPORT_MODE_FINGER_ONLY_ALL_FINGERS	0x02
+#define EVENT_REPORT_MODE_STYLUS_FINGER				0x03
+#define EVENT_REPORT_MODE_STYLUS_ERASER				0x04
+#define EVENT_REPORT_MODE_STYLUS_ONLY				0x05
+#define EVENT_REPORT_MODE_ERASER_ONLY				0x06
+#define EVENT_REPORT_MODE_TYPE_NUM					0x07
 /***************************************************************************
  *	DO NOT MODIFY - Kernel Point Report Definition
  *	NOTE: Need to sync with HAL
  ***************************************************************************/
 
+/*#define ENABLE_CALC_QUEUE_COUNT*/
+#define ENABLE_SLOW_SCAN
+#define ENABLE_SMOOTH_LEVEL
+#define ENABLE_SPI_SETTING		0
+#define ENABLE_FREQ_HOPPING		1
+#define ENABLE_FB_CALLBACK	0
+
+enum tch_update_reason {
+	STYLUS_DISABLE_BY_WATER = 0x01,
+	STYLUS_DISABLE_BY_NOISE,
+	STYLUS_IS_ENABLED = 0xFF,
+};
+
 struct rm_touch_event {
-	unsigned char ucTouchCount;
-	unsigned char ucID[RM_TS_MAX_POINTS];
-	unsigned char ucToolType[RM_TS_MAX_POINTS];
-	unsigned short usX[RM_TS_MAX_POINTS];
-	unsigned short usY[RM_TS_MAX_POINTS];
-	unsigned short usZ[RM_TS_MAX_POINTS];
-	unsigned short usTiltX[RM_TS_MAX_POINTS];
-	unsigned short usTiltY[RM_TS_MAX_POINTS];
-	unsigned char ucSlot[RM_TS_MAX_POINTS];
+	unsigned char uc_touch_count;
+	unsigned char uc_id[RM_TS_MAX_POINTS];
+	unsigned char uc_tool_type[RM_TS_MAX_POINTS];
+	unsigned short us_x[RM_TS_MAX_POINTS];
+	unsigned short us_y[RM_TS_MAX_POINTS];
+	unsigned short us_z[RM_TS_MAX_POINTS];
+	unsigned short us_tilt_x[RM_TS_MAX_POINTS];
+	unsigned short us_tilt_y[RM_TS_MAX_POINTS];
+	unsigned char uc_slot[RM_TS_MAX_POINTS];
+	unsigned char uc_pre_tool_type[RM_TS_MAX_POINTS];
 };
 
 struct rm_spi_ts_platform_data {
@@ -239,16 +279,16 @@ struct rm_spi_ts_platform_data {
 	int y_size;
 	unsigned char *config;
 	int platform_id;
+#ifdef EPROBE_DEFER
 	unsigned char *name_of_clock;
 	unsigned char *name_of_clock_con;
+#endif
+	/* Read from struct */
 	bool gpio_sensor_select0;
 	bool gpio_sensor_select1;
 };
 
-int rm_tch_spi_byte_write(unsigned char u8Addr, unsigned char u8Value);
-int rm_tch_spi_byte_read(unsigned char u8Addr, unsigned char *pu8Value);
-int rm_tch_spi_burst_write(unsigned char *pBuf, unsigned int u32Len);
-int rm_tch_spi_burst_read(unsigned char u8Addr, unsigned char *pu8Value,
-	unsigned int u32len);
+int rm_tch_spi_byte_write(unsigned char u8_addr, unsigned char u8_value);
+int rm_tch_spi_byte_read(unsigned char u8_addr, unsigned char *p_u8_value);
 
 #endif				/*_RM31080A_TS_H_*/

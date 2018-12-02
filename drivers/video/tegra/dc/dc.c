@@ -2179,6 +2179,7 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 	int failed_init = 0;
 	int i;
 
+	dev_info(&dc->ndev->dev, "%s:%d ++", __func__, __LINE__);
 	if (WARN_ON(!dc || !dc->out || !dc->out_ops))
 		return false;
 
@@ -2250,6 +2251,7 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 
 	tegra_dc_put(dc);
 
+	dev_info(&dc->ndev->dev, "%s:%d --", __func__, __LINE__);
 	return true;
 }
 
@@ -2387,10 +2389,36 @@ void tegra_dc_enable(struct tegra_dc *dc)
 	trace_display_mode(dc, &dc->mode);
 }
 
+void tegra_dc_disable_window(struct tegra_dc *dc, unsigned win)
+{
+	struct tegra_dc_win *w = &dc->windows[win];
+
+	/* reset window bandwidth */
+	w->bandwidth = 0;
+	w->new_bandwidth = 0;
+
+	/* disable windows */
+	w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+
+	/* refuse to operate on invalid syncpts */
+	if (WARN_ON(dc->syncpt[win].id == NVSYNCPT_INVALID))
+		return;
+
+	/* flush any pending syncpt waits */
+	dc->syncpt[win].max += 1;
+	while (dc->syncpt[win].min < dc->syncpt[win].max) {
+		trace_display_syncpt_flush(dc, dc->syncpt[win].id,
+			dc->syncpt[win].min, dc->syncpt[win].max);
+		dc->syncpt[win].min++;
+		nvhost_syncpt_cpu_incr_ext(dc->ndev, dc->syncpt[win].id);
+	}
+}
+
 static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 {
 	unsigned i;
 
+	dev_info(&dc->ndev->dev, "%s:%d ++", __func__, __LINE__);
 	tegra_dc_get(dc);
 
 	if (dc->out && dc->out->prepoweroff)
@@ -2410,27 +2438,7 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 		dc->out->disable();
 
 	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
-		struct tegra_dc_win *w = &dc->windows[i];
-
-		/* reset window bandwidth */
-		w->bandwidth = 0;
-		w->new_bandwidth = 0;
-
-		/* disable windows */
-		w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
-
-		/* refuse to operate on invalid syncpts */
-		if (WARN_ON(dc->syncpt[i].id == NVSYNCPT_INVALID))
-			continue;
-
-		/* flush any pending syncpt waits */
-		dc->syncpt[i].max += 1;
-		while (dc->syncpt[i].min < dc->syncpt[i].max) {
-			trace_display_syncpt_flush(dc, dc->syncpt[i].id,
-				dc->syncpt[i].min, dc->syncpt[i].max);
-			dc->syncpt[i].min++;
-			nvhost_syncpt_cpu_incr_ext(dc->ndev, dc->syncpt[i].id);
-		}
+		tegra_dc_disable_window(dc, i);
 	}
 	trace_display_disable(dc);
 
@@ -2444,6 +2452,7 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 		tegra_dc_clk_disable(dc);
 	else
 		tegra_dvfs_set_rate(dc->clk, 0);
+	dev_info(&dc->ndev->dev, "%s:%d --", __func__, __LINE__);
 }
 
 void tegra_dc_stats_enable(struct tegra_dc *dc, bool enable)
@@ -2479,22 +2488,29 @@ bool tegra_dc_stats_get(struct tegra_dc *dc)
 	return true;
 }
 
-/* make the screen blank by disabling all windows */
-void tegra_dc_blank(struct tegra_dc *dc)
+/* blank selected windows by disabling them */
+void tegra_dc_blank(struct tegra_dc *dc, unsigned windows)
 {
 	struct tegra_dc_win *dcwins[DC_N_WINDOWS];
 	unsigned i;
+	unsigned long int blank_windows;
+	int nr_win = 0;
 
-	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
-		dcwins[i] = tegra_dc_get_window(dc, i);
-		if (!dcwins[i])
+	blank_windows = windows & dc->valid_windows;
+
+	if (!blank_windows)
+		return;
+
+	for_each_set_bit(i, &blank_windows, DC_N_WINDOWS) {
+		dcwins[nr_win] = tegra_dc_get_window(dc, i);
+		if (!dcwins[nr_win])
 			continue;
-		dcwins[i]->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+		dcwins[nr_win++]->flags &= ~TEGRA_WIN_FLAG_ENABLED;
 	}
 
-	tegra_dc_update_windows(dcwins, DC_N_WINDOWS);
-	tegra_dc_sync_windows(dcwins, DC_N_WINDOWS);
-    tegra_dc_program_bandwidth(dc, true);
+	tegra_dc_update_windows(dcwins, nr_win);
+	tegra_dc_sync_windows(dcwins, nr_win);
+	tegra_dc_program_bandwidth(dc, true);
 }
 
 static void _tegra_dc_disable(struct tegra_dc *dc)

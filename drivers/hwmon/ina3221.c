@@ -36,6 +36,7 @@
 #include <linux/hwmon.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/regulator/consumer.h>
 
 #include "linux/ina3221.h"
 
@@ -57,6 +58,12 @@
 #define CPU_THRESHOLD 2
 #define CPU_FREQ_THRESHOLD 102000
 
+static bool ina3221_debug = 0;
+
+module_param(ina3221_debug, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(ina3221_debug, "ina3221 debug");
+
+
 struct ina3221_data {
 	struct device *hwmon_dev;
 	struct i2c_client *client;
@@ -67,6 +74,7 @@ struct ina3221_data {
 	struct notifier_block nb2;
 	int shutdown_complete;
 	int is_suspended;
+	struct regulator *vdd;
 };
 
 static int __locked_ina3221_switch(struct i2c_client *client,
@@ -152,6 +160,7 @@ static s32 __locked_set_crit_warn_limits(struct i2c_client *client)
 	}
 	return ret;
 }
+static struct ina3221_data *tmpdata;
 
 static s32 __locked_power_down_ina3221(struct i2c_client *client)
 {
@@ -732,7 +741,8 @@ static int ina3221_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct ina3221_data *data;
-	int ret, i;
+	int i;
+	int ret = 0;
 
 	data = devm_kzalloc(&client->dev, sizeof(struct ina3221_data),
 						GFP_KERNEL);
@@ -747,6 +757,21 @@ static int ina3221_probe(struct i2c_client *client,
 	data->mode = TRIGGERED;
 	data->shutdown_complete = 0;
 	data->is_suspended = 0;
+
+	/* get power */
+	data->vdd = regulator_get(&client->dev, "vdd");
+	if (!data->vdd) {
+		dev_err(&client->dev, "ina3221 cannot get vdd.\n");
+		goto exit_free;
+	}
+	ret = regulator_enable(data->vdd);
+	if (ret < 0) {
+		dev_err(&client->dev,
+			"ina3221 failed to enable vdd with err=%d.\n",
+			ret);
+		goto exit_put;
+	}
+
 	/* reset ina3221 */
 	ret = i2c_smbus_write_word_data(client, INA3221_CONFIG,
 		__constant_cpu_to_be16((INA3221_RESET)));
@@ -785,11 +810,15 @@ static int ina3221_probe(struct i2c_client *client,
 	if (ret < 0)
 		goto exit_remove;
 
+	tmpdata = data;
+
 	return 0;
 
 exit_remove:
 	while (i--)
 		device_remove_file(&client->dev, &ina3221[i].dev_attr);
+exit_put:
+	regulator_put(data->vdd);
 exit_free:
 	devm_kfree(&client->dev, data);
 exit:
@@ -816,6 +845,8 @@ static void ina3221_shutdown(struct i2c_client *client)
 	struct ina3221_data *data = i2c_get_clientdata(client);
 	mutex_lock(&data->mutex);
 	__locked_power_down_ina3221(client);
+	regulator_disable(data->vdd);
+	regulator_put(data->vdd);
 	data->shutdown_complete = 1;
 	mutex_unlock(&data->mutex);
 }

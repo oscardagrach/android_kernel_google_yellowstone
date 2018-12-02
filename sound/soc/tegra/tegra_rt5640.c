@@ -58,7 +58,7 @@
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
 
-#define DRV_NAME "tegra-snd-rt5640"
+#define DRV_NAME "tegra-snd-rt5639"
 
 #define DAI_LINK_HIFI		0
 #define DAI_LINK_SPDIF		1
@@ -395,7 +395,7 @@ static int tegra_rt5640_jack_notifier(struct notifier_block *self,
 			if (gpio_is_valid(pdata->gpio_ext_mic_en))
 				gpio_direction_output(pdata->gpio_ext_mic_en, 0);
 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
-				status_jack = rt5639_headset_detect(codec, 1);
+				status_jack = rt5640_headset_detect(codec, 1);
 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
 									    6))
 				status_jack = rt5640_headset_detect(codec, 1);
@@ -418,7 +418,7 @@ static int tegra_rt5640_jack_notifier(struct notifier_block *self,
 			if (gpio_is_valid(pdata->gpio_ext_mic_en))
 				gpio_direction_output(pdata->gpio_ext_mic_en, 1);
 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
-				rt5639_headset_detect(codec, 0);
+				rt5640_headset_detect(codec, 0);
 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
 									    6))
 				rt5640_headset_detect(codec, 0);

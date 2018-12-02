@@ -16,7 +16,6 @@
 
 #ifdef CONFIG_PROC_FS
 
-#include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
@@ -25,10 +24,13 @@
 #include "quadd.h"
 #include "version.h"
 #include "quadd_proc.h"
+#include "arm_pmu.h"
 
 #define YES_NO(x) ((x) ? "yes" : "no")
 
 static struct quadd_ctx *ctx;
+
+#define QUADD_PROC_DEV QUADD_DEVICE_NAME
 
 static int show_version(struct seq_file *f, void *offset)
 {
@@ -57,29 +59,54 @@ static int show_capabilities(struct seq_file *f, void *offset)
 	struct quadd_comm_cap *cap = &ctx->cap;
 	struct quadd_events_cap *event = &cap->events_cap;
 	unsigned int extra = cap->reserved[QUADD_COMM_CAP_IDX_EXTRA];
+	struct quadd_arch_info *arch = NULL;
 
-	seq_printf(f, "pmu:                            %s\n",
+	if (ctx->pmu)
+		arch = ctx->pmu->get_arch();
+
+	seq_printf(f, "pmu:                                   %s\n",
 		   YES_NO(cap->pmu));
-	seq_printf(f, "tegra 3 LP cluster:             %s\n",
+	seq_printf(f, "tegra 3 LP cluster:                    %s\n",
 		   YES_NO(cap->tegra_lp_cluster));
-	seq_printf(f, "power rate samples:             %s\n",
+	seq_printf(f, "power rate samples:                    %s\n",
 		   YES_NO(cap->power_rate));
 
-	seq_printf(f, "l2 cache:                       %s\n",
+	seq_printf(f, "l2 cache:                              %s\n",
 		   YES_NO(cap->l2_cache));
 	if (cap->l2_cache) {
-		seq_printf(f, "multiple l2 events:             %s\n",
+		seq_printf(f, "multiple l2 events:                    %s\n",
 			   YES_NO(cap->l2_multiple_events));
 	}
 
-	seq_printf(f, "support polling mode:           %s\n",
+	seq_printf(f, "support polling mode:                  %s\n",
 		   YES_NO(cap->blocked_read));
-	seq_printf(f, "backtrace from the kernel ctx:  %s\n",
+	seq_printf(f, "backtrace from the kernel ctx:         %s\n",
 		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_BT_KERNEL_CTX));
-	seq_printf(f, "send mmap regions at the start: %s\n",
+	seq_printf(f, "send mmap regions at the start:        %s\n",
 		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_GET_MMAP));
-	seq_printf(f, "group samples:                  %s\n",
+	seq_printf(f, "group samples:                         %s\n",
 		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_GROUP_SAMPLES));
+	seq_printf(f, "unwinding based on ex-handling tables: %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_BT_UNWIND_TABLES));
+	seq_printf(f, "support AArch64 architecture:          %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_SUPPORT_AARCH64));
+	seq_printf(f, "support special architecture mappings: %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_SPECIAL_ARCH_MMAP));
+	seq_printf(f, "support mixed unwinding mode:          %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_UNWIND_MIXED));
+	seq_printf(f, "information about unwind entry:        %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_UNW_ENTRY_TYPE));
+	seq_printf(f, "arch timer is available:               %s\n",
+		   YES_NO(extra & QUADD_COMM_CAP_EXTRA_ARCH_TIMER));
+
+	seq_puts(f, "\n");
+
+	if (arch) {
+		seq_printf(f, "pmu arch:                              %s\n",
+			arch->name);
+		seq_printf(f, "pmu arch version:                      %d\n",
+			arch->ver);
+	}
 
 	seq_puts(f, "\n");
 	seq_puts(f, "Supported events:\n");
@@ -157,18 +184,20 @@ void quadd_proc_init(struct quadd_ctx *context)
 {
 	ctx = context;
 
-	proc_mkdir("quadd", NULL);
-	proc_create("quadd/version", 0, NULL, &version_proc_fops);
-	proc_create("quadd/capabilities", 0, NULL, &capabilities_proc_fops);
-	proc_create("quadd/status", 0, NULL, &status_proc_fops);
+	proc_mkdir(QUADD_PROC_DEV, NULL);
+
+	proc_create(QUADD_PROC_DEV "/version", 0, NULL, &version_proc_fops);
+	proc_create(QUADD_PROC_DEV "/capabilities", 0, NULL,
+		    &capabilities_proc_fops);
+	proc_create(QUADD_PROC_DEV "/status", 0, NULL, &status_proc_fops);
 }
 
 void quadd_proc_deinit(void)
 {
-	remove_proc_entry("quadd/version", NULL);
-	remove_proc_entry("quadd/capabilities", NULL);
-	remove_proc_entry("quadd/status", NULL);
-	remove_proc_entry("quadd", NULL);
+	remove_proc_entry(QUADD_PROC_DEV "/version", NULL);
+	remove_proc_entry(QUADD_PROC_DEV "/capabilities", NULL);
+	remove_proc_entry(QUADD_PROC_DEV "/status", NULL);
+	remove_proc_entry(QUADD_PROC_DEV, NULL);
 }
 
 #endif	/* CONFIG_PROC_FS */

@@ -12,6 +12,8 @@
 #ifndef __RT5640_H__
 #define __RT5640_H__
 
+#define USE_EQ
+
 /* Info */
 #define RT5640_RESET				0x00
 #define RT5640_VENDOR_ID			0xfd
@@ -149,6 +151,7 @@
 #define RT5640_BIAS_CUR1			0x12
 #define RT5640_BIAS_CUR3			0x14
 #define RT5640_CLSD_INT_REG1			0x1c
+#define RT5640_CHPUMP_INT_REG1			0x24
 #define RT5640_MAMP_INT_REG2			0x37
 #define RT5640_CHOP_DAC_ADC			0x3d
 #define RT5640_MIXER_INT_REG			0x3f
@@ -988,8 +991,7 @@
 #define RT5640_SCLK_SRC_SFT			14
 #define RT5640_SCLK_SRC_MCLK			(0x0 << 14)
 #define RT5640_SCLK_SRC_PLL1			(0x1 << 14)
-#define RT5640_SCLK_SRC_PLL1T			(0x2 << 14)
-#define RT5640_SCLK_SRC_RCCLK			(0x3 << 14) /* 15MHz */
+#define RT5640_SCLK_SRC_RCCLK			(0x2 << 14) /* 15MHz */
 #define RT5640_PLL1_SRC_MASK			(0x3 << 12)
 #define RT5640_PLL1_SRC_SFT			12
 #define RT5640_PLL1_SRC_MCLK			(0x0 << 12)
@@ -1355,7 +1357,7 @@
 #define RT5640_EQ_LPF_SFT			0
 #define RT5640_EQ_LPF_DIS			(0x0)
 #define RT5640_EQ_LPF_EN			(0x1)
-#define RT5640_EQ_CTRL_MASK			(0x7f)
+#define RT5640_EQ_CTRL_MASK			(0x1ff)
 
 /* Memory Test (0xb2) */
 #define RT5640_MT_MASK				(0x1 << 15)
@@ -1719,12 +1721,10 @@
 #define RT5640_DSP_RST_PIN_LO			(0x0 << 10)
 #define RT5640_DSP_RST_PIN_HI			(0x1 << 10)
 #define RT5640_DSP_R_EN				(0x1 << 9)
-#define RT5640_DSP_R_EN_BIT			9
 #define RT5640_DSP_W_EN			(0x1 << 8)
-#define RT5640_DSP_W_EN_BIT			8
 #define RT5640_DSP_CMD_MASK			(0xff)
-#define RT5640_DSP_CMD_SFT			0
-#define RT5640_DSP_CMD_MW			(0x3B)	/* Memory Write */
+#define RT5640_DSP_CMD_PE			(0x0d)	/* Patch Entry */
+#define RT5640_DSP_CMD_MW			(0x3b)	/* Memory Write */
 #define RT5640_DSP_CMD_MR			(0x37)	/* Memory Read */
 #define RT5640_DSP_CMD_RR			(0x60)	/* Register Read */
 #define RT5640_DSP_CMD_RW			(0x68)	/* Register Write */
@@ -2065,7 +2065,7 @@ enum {
 #define RT5640_VOL_RSCL_MAX 0x27
 #define RT5640_VOL_RSCL_RANGE 0x1F
 /* Debug String Length */
-#define RT5640_REG_DISP_LEN 10
+#define RT5640_REG_DISP_LEN 23
 
 #define RT5640_NO_JACK		BIT(0)
 #define RT5640_HEADSET_DET	BIT(1)
@@ -2074,17 +2074,19 @@ enum {
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert);
 
 /* System Clock Source */
-#define RT5640_SCLK_S_MCLK 0
-#define RT5640_SCLK_S_PLL1 1
-#define RT5640_SCLK_S_PLL1_TK 2
-#define RT5640_SCLK_S_RCCLK 3
+enum {
+	RT5640_SCLK_S_MCLK,
+	RT5640_SCLK_S_PLL1,
+	RT5640_SCLK_S_RCCLK,
+};
 
 /* PLL1 Source */
-#define RT5640_PLL1_S_MCLK 0
-#define RT5640_PLL1_S_BCLK1 1
-#define RT5640_PLL1_S_BCLK2 2
-#define RT5640_PLL1_S_BCLK3 3
-
+enum {
+	RT5640_PLL1_S_MCLK,
+	RT5640_PLL1_S_BCLK1,
+	RT5640_PLL1_S_BCLK2,
+	RT5640_PLL1_S_BCLK3,
+};
 
 enum {
 	RT5640_AIF1,
@@ -2093,11 +2095,9 @@ enum {
 	RT5640_AIFS,
 };
 
-enum {
-	RT5640_U_IF1 = 0x1,
-	RT5640_U_IF2 = 0x2,
-	RT5640_U_IF3 = 0x4,
-};
+#define RT5640_U_IF1 (0x1)
+#define RT5640_U_IF2 (0x1 << 1)
+#define RT5640_U_IF3 (0x1 << 2)
 
 enum {
 	RT5640_IF_123,
@@ -2126,6 +2126,7 @@ struct rt5640_pll_code {
 
 struct rt5640_priv {
 	struct snd_soc_codec *codec;
+	struct delayed_work patch_work;
 
 	int aif_pu;
 	int sysclk;
@@ -2139,10 +2140,12 @@ struct rt5640_priv {
 	int pll_out;
 
 	int dmic_en;
-	int dsp_sw;
-	struct mutex lock;
-	int shutdown_complete;
+	int dsp_sw; /* expected parameter setting */
+	int v_code;
+	bool dsp_play_pass;
+	bool dsp_rec_pass;
+	int dmic1_src;
 };
 
-
+int rt5639_irq_jd_reg_init(struct snd_soc_codec *codec);
 #endif /* __RT5640_H__ */
