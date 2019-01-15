@@ -35,6 +35,10 @@
 #define NVDUMPER_RESERVED_SIZE 4096UL
 #endif
 
+#ifndef PBP5_EVT_BOARD
+#define PBP5_EVT_BOARD
+#endif
+
 #define ADD_FIXED_VOLTAGE_REG(_name)	(&_name##_fixed_voltage_device)
 
 /* Macro for defining fixed voltage regulator */
