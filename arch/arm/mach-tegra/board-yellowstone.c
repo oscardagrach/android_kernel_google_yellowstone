@@ -482,110 +482,6 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	},
 };
 
-/* Enhance USB phy driving strength */
-static struct tegra_usb_platform_data tegra_udc_en_pdata = {
-	.port_otg = true,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
-	.op_mode = TEGRA_USB_OPMODE_DEVICE,
-	.u_data.dev = {
-		.vbus_pmu_irq = 0,
-		.vbus_gpio = -1,
-		.charging_supported = false,
-		.remote_wakeup_supported = false,
-	},
-	.u_cfg.utmi = {
-		.hssync_start_delay = 0,
-		.elastic_limit = 16,
-		.idle_wait_delay = 17,
-		.term_range_adj = 6,
-		.xcvr_lsfslew = 2,
-		.xcvr_lsrslew = 2,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 1,
-	},
-};
-
-static struct tegra_usb_platform_data tegra_ehci1_utmi_en_pdata = {
-	.port_otg = true,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = true,
-	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
-	.op_mode = TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-	.u_cfg.utmi = {
-		.hssync_start_delay = 0,
-		.elastic_limit = 16,
-		.idle_wait_delay = 17,
-		.term_range_adj = 6,
-		.xcvr_setup = 15,
-		.xcvr_lsfslew = 0,
-		.xcvr_lsrslew = 3,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 1,
-		.vbus_oc_map = 0x4,
-		.xcvr_hsslew_lsb = 2,
-	},
-};
-
-static struct tegra_usb_platform_data tegra_ehci2_utmi_en_pdata = {
-	.port_otg = false,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
-	.op_mode = TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-	.u_cfg.utmi = {
-		.hssync_start_delay = 0,
-		.elastic_limit = 16,
-		.idle_wait_delay = 17,
-		.term_range_adj = 6,
-		.xcvr_setup = 8,
-		.xcvr_lsfslew = 2,
-		.xcvr_lsrslew = 2,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 1,
-		.vbus_oc_map = 0x5,
-	},
-};
-
-static struct tegra_usb_platform_data tegra_ehci3_utmi_en_pdata = {
-	.port_otg = false,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
-	.op_mode = TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-	.u_cfg.utmi = {
-	.hssync_start_delay = 0,
-		.elastic_limit = 16,
-		.idle_wait_delay = 17,
-		.term_range_adj = 6,
-		.xcvr_setup = 8,
-		.xcvr_lsfslew = 2,
-		.xcvr_lsrslew = 2,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 1,
-		.vbus_oc_map = 0x5,
-	},
-};
-
 /* GPIO usage for Bruce modem */
 static struct gpio modem_gpios[] = {
 	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
@@ -625,12 +521,6 @@ static struct tegra_usb_platform_data tegra_ehci2_hsic_smsc_hub_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
-};
-
-/* Enhance USB phy driving strength */
-static struct tegra_usb_otg_data tegra_otg_en_pdata = {
-	.ehci_device = &tegra_ehci1_device,
-	.ehci_pdata = &tegra_ehci1_utmi_en_pdata,
 };
 
 static void ardbeg_usb_init(void)
@@ -736,115 +626,6 @@ static void ardbeg_usb_init(void)
 		    (bi.board_id != BOARD_E1784)) {
 			tegra_ehci3_device.dev.platform_data =
 				&tegra_ehci3_utmi_pdata;
-			platform_device_register(&tegra_ehci3_device);
-		}
-	}
-
-}
-
-/* Enhance USB phy driving strength */
-static void ardbeg_usb_en_init(void)
-{
-	int usb_port_owner_info = tegra_get_usb_port_owner_info();
-	int modem_id = tegra_get_modem_id();
-	struct board_info bi;
-	tegra_get_pmu_board_info(&bi);
-
-	if (board_info.sku == 1100 || board_info.board_id == BOARD_P1761 ||
-					board_info.board_id == BOARD_E1784)
-		tegra_ehci1_utmi_pdata.u_data.host.turn_off_vbus_on_lp0 = true;
-
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM370 ||
-			board_info.board_id == BOARD_PM374 ||
-			board_info.board_id == BOARD_PM363) {
-		/* Laguna */
-		/* Host cable is detected through AMS PMU Interrupt */
-		tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_ehci1_utmi_en_pdata.id_extcon_dev_name = "as3722-extcon";
-	} else {
-		/* Ardbeg and TN8 */
-
-		/*
-		 * TN8 supports vbus changing and it can handle
-		 * vbus voltages larger then 5V.  Enable this.
-		 */
-		if (board_info.board_id == BOARD_P1761 ||
-			board_info.board_id == BOARD_E1784) {
-			/*
-			 * Set the maximum voltage that can be supplied
-			 * over USB vbus that the board supports if we use
-			 * a quick charge 2 wall charger.
-			 */
-			tegra_udc_en_pdata.qc2_voltage = TEGRA_USB_QC2_9V;
-			/*
-			 * TN8 board design can handle 3A charging
-			 */
-			tegra_udc_en_pdata.u_data.dev.qc2_current_limit_ma = 3000;
-		}
-
-		if (board_info.board_id == BOARD_P1761)
-			tegra_udc_en_pdata.u_data.dev.dcp_current_limit_ma = 1800;
-
-		switch (bi.board_id) {
-		case BOARD_E1733:
-			/* Host cable is detected through PMU Interrupt */
-			tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_en_pdata.id_extcon_dev_name =
-							 "as3722-extcon";
-			break;
-		case BOARD_E1736:
-		case BOARD_E1769:
-		case BOARD_E1735:
-		case BOARD_E1936:
-		case BOARD_P1761:
-			/* Device cable is detected through PMU Interrupt */
-			tegra_udc_en_pdata.support_pmu_vbus = true;
-			tegra_udc_en_pdata.vbus_extcon_dev_name = "palmas-extcon";
-			tegra_ehci1_utmi_en_pdata.support_pmu_vbus = true;
-			tegra_ehci1_utmi_en_pdata.vbus_extcon_dev_name =
-							 "palmas-extcon";
-			/* Host cable is detected through PMU Interrupt */
-			tegra_udc_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_en_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_en_pdata.id_extcon_dev_name =
-							 "palmas-extcon";
-		}
-	}
-
-	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
-		tegra_otg_en_pdata.is_xhci = false;
-		tegra_udc_en_pdata.u_data.dev.is_xhci = false;
-	} else {
-		tegra_otg_en_pdata.is_xhci = true;
-		tegra_udc_en_pdata.u_data.dev.is_xhci = true;
-	}
-	tegra_otg_device.dev.platform_data = &tegra_otg_en_pdata;
-	platform_device_register(&tegra_otg_device);
-	/* Setup the udc platform data */
-	tegra_udc_device.dev.platform_data = &tegra_udc_en_pdata;
-
-	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
-		if (!modem_id) {
-			if ((bi.board_id != BOARD_P1761) &&
-			    (bi.board_id != BOARD_E1922) &&
-			    (bi.board_id != BOARD_E1784)) {
-				tegra_ehci2_device.dev.platform_data =
-					&tegra_ehci2_utmi_en_pdata;
-				platform_device_register(&tegra_ehci2_device);
-			}
-		}
-	}
-
-	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
-		if ((bi.board_id != BOARD_P1761) &&
-		    (bi.board_id != BOARD_E1922) &&
-		    (bi.board_id != BOARD_E1784)) {
-			tegra_ehci3_device.dev.platform_data =
-				&tegra_ehci3_utmi_en_pdata;
 			platform_device_register(&tegra_ehci3_device);
 		}
 	}
@@ -1456,14 +1237,7 @@ static void __init tegra_ardbeg_late_init(void)
 		board_info.minor_revision);
 	ardbeg_display_init();
 	ardbeg_uart_init();
-
-	/* Enhance USB phy driving strength */
-	if (get_cci_hw_id() == DVT3 ||
-		get_cci_hw_id() == PVT)
-        /* With usb switch, apply default usb driving strength */
-		ardbeg_usb_init();
-	else
-		ardbeg_usb_en_init();
+	ardbeg_usb_init();
 
 	ardbeg_modem_init();
 	ardbeg_xusb_init();
