@@ -386,7 +386,6 @@ int __init ardbeg_tps65913_regulator_init(void)
 	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 	u32 pmc_ctrl;
 	int i;
-	struct board_info board_info;
 
 	/* TPS65913: Normal state of INT request line is LOW.
 	 * configure the power management controller to trigger PMU
@@ -622,10 +621,6 @@ static struct regulator_consumer_supply fixed_reg_en_vdd_cpu_fixed_supply[] = {
 	REGULATOR_SUPPLY("vdd_cpu_fixed", NULL),
 };
 
-static struct regulator_consumer_supply fixed_reg_en_avdd_3v3_dp_supply[] = {
-	REGULATOR_SUPPLY("avdd_3v3_dp", NULL),
-};
-
 static struct regulator_consumer_supply fixed_reg_en_avdd_hdmi_pll_supply[] = {
 	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.1"),
 #ifdef CONFIG_TEGRA_HDMI_PRIMARY
@@ -713,7 +708,6 @@ FIXED_REG(22,	avdd_hdmi_pll,	avdd_hdmi_pll,
 	ADD_FIXED_REG(ti913_gpio3),		\
 	ADD_FIXED_REG(ti913_gpio6),		\
 	ADD_FIXED_REG(vdd_cpu_fixed),
-#endif
 
 static struct platform_device *fixed_reg_devs_e1735[] = {
 	ARDBEG_COMMON_FIXED_REG
@@ -928,6 +922,10 @@ static void yellowstone_charger_init(void)
 
 int __init ardbeg_regulator_init(void)
 {
+	struct board_info pmu_board_info;
+
+	tegra_get_pmu_board_info(&pmu_board_info);
+
 	regulator_has_full_constraints();
 	ardbeg_tps65913_regulator_init();
 
@@ -989,107 +987,6 @@ static struct tegra_tsensor_pmu_data tpdata_palmas = {
 	.i2c_controller_id = 4,
 	.poweroff_reg_addr = 0xa0,
 	.poweroff_reg_data = 0x0,
-};
-
-static struct tegra_tsensor_pmu_data tpdata_as3722 = {
-	.reset_tegra = 1,
-	.pmu_16bit_ops = 0,
-	.controller_type = 0,
-	.pmu_i2c_addr = 0x40,
-	.i2c_controller_id = 4,
-	.poweroff_reg_addr = 0x36,
-	.poweroff_reg_data = 0x2,
-};
-
-static struct soctherm_therm ardbeg_therm_pop[THERM_SIZE] = {
-	[THERM_CPU] = {
-		.zone_enable = true,
-		.passive_delay = 1000,
-		.hotspot_offset = 6000,
-		.num_trips = 3,
-		.trips = {
-			{
-				.cdev_type = "tegra-shutdown",
-				.trip_temp = 97000,
-				.trip_type = THERMAL_TRIP_CRITICAL,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-			{
-				.cdev_type = "tegra-heavy",
-				.trip_temp = 94000,
-				.trip_type = THERMAL_TRIP_HOT,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-			{
-				.cdev_type = "cpu-balanced",
-				.trip_temp = 84000,
-				.trip_type = THERMAL_TRIP_PASSIVE,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-		},
-		.tzp = &soctherm_tzp,
-	},
-	[THERM_GPU] = {
-		.zone_enable = true,
-		.passive_delay = 1000,
-		.hotspot_offset = 6000,
-		.num_trips = 3,
-		.trips = {
-			{
-				.cdev_type = "tegra-shutdown",
-				.trip_temp = 93000,
-				.trip_type = THERMAL_TRIP_CRITICAL,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-			{
-				.cdev_type = "tegra-heavy",
-				.trip_temp = 91000,
-				.trip_type = THERMAL_TRIP_HOT,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-			{
-				.cdev_type = "gpu-balanced",
-				.trip_temp = 81000,
-				.trip_type = THERMAL_TRIP_PASSIVE,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-		},
-		.tzp = &soctherm_tzp,
-	},
-	[THERM_MEM] = {
-		.zone_enable = true,
-		.num_trips = 1,
-		.trips = {
-			{
-				.cdev_type = "tegra-shutdown",
-				.trip_temp = 93000, /* = GPU shut */
-				.trip_type = THERMAL_TRIP_CRITICAL,
-				.upper = THERMAL_NO_LIMIT,
-				.lower = THERMAL_NO_LIMIT,
-			},
-		},
-		.tzp = &soctherm_tzp,
-	},
-	[THERM_PLL] = {
-		.zone_enable = true,
-		.num_trips = 1,
-		.trips = {
-			{
-				.cdev_type = "tegra-dram",
-				.trip_temp = 78000,
-				.trip_type = THERMAL_TRIP_ACTIVE,
-				.upper = 1,
-				.lower = 1,
-			},
-		},
-		.tzp = &soctherm_tzp,
-	},
 };
 
 static struct soctherm_platform_data ardbeg_soctherm_data = {
@@ -1191,45 +1088,6 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 		},
 	},
 	.tshut_pmu_trip_data = &tpdata_palmas,
-};
-
-static struct soctherm_throttle battery_oc_throttle = {
-	.throt_mode = BRIEF,
-	.polarity = SOCTHERM_ACTIVE_LOW,
-	.priority = 100,
-	.devs = {
-		[THROTTLE_DEV_CPU] = {
-			.enable = true,
-			.depth = 50,
-		},
-		[THROTTLE_DEV_GPU] = {
-			.enable = true,
-			.throttling_depth = "medium_throttling",
-		},
-	},
-};
-
-static struct soctherm_throttle voltmon_throttle = {
-	.throt_mode = BRIEF,
-	.polarity = SOCTHERM_ACTIVE_LOW,
-	.priority = 50,
-	.intr = true,
-	.alarm_cnt_threshold = 100,
-	.alarm_filter = 5100000,
-	.devs = {
-		[THROTTLE_DEV_CPU] = {
-			.enable = true,
-			/* throttle depth 75% with 3.76us ramp rate */
-			.dividend = 63,
-			.divisor = 255,
-			.duration = 0,
-			.step = 0,
-		},
-		[THROTTLE_DEV_GPU] = {
-			.enable = true,
-			.throttling_depth = "medium_throttling",
-		},
-	},
 };
 
 struct soctherm_throttle baseband_throttle = {

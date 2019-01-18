@@ -755,42 +755,6 @@ static struct nct1008_platform_data ardbeg_nct72_pdata = {
 };
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
-static struct nct1008_platform_data ardbeg_nct72_tskin_pdata = {
-	.loc_name = "skin",
-
-	.supported_hwrev = true,
-	.conv_rate = 0x06, /* 4Hz conversion rate */
-	.offset = 0,
-	.extended_range = true,
-
-	.sensors = {
-		[LOC] = {
-			.shutdown_limit = 95, /* C */
-			.num_trips = 0,
-			.tzp = NULL,
-		},
-		[EXT] = {
-			.shutdown_limit = 85, /* C */
-			.passive_delay = 10000,
-			.polling_delay = 1000,
-			.tzp = &skin_tzp,
-			.num_trips = 1,
-			.trips = {
-				{
-					.cdev_type = "skin-balanced",
-					.trip_temp = 50000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-					.mask = 1,
-				},
-			},
-		}
-	}
-};
-#endif
-
-#ifdef CONFIG_TEGRA_SKIN_THROTTLE
 static struct i2c_board_info ardbeg_i2c_nct72_board_info[] = {
 	{
 		I2C_BOARD_INFO("nct72", 0x4c),

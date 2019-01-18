@@ -116,51 +116,6 @@ static struct resource ardbeg_disp1_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 };
-
-static struct resource ardbeg_disp1_edp_resources[] = {
-	{
-		.name	= "irq",
-		.start	= INT_DISPLAY_GENERAL,
-		.end	= INT_DISPLAY_GENERAL,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "regs",
-		.start	= TEGRA_DISPLAY_BASE,
-		.end	= TEGRA_DISPLAY_BASE + TEGRA_DISPLAY_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "fbmem",
-		.start	= 0, /* Filled in by ardbeg_panel_init() */
-		.end	= 0, /* Filled in by ardbeg_panel_init() */
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "mipi_cal",
-		.start	= TEGRA_MIPI_CAL_BASE,
-		.end	= TEGRA_MIPI_CAL_BASE + TEGRA_MIPI_CAL_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name   = "sor",
-		.start  = TEGRA_SOR_BASE,
-		.end    = TEGRA_SOR_BASE + TEGRA_SOR_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	{
-		.name   = "dpaux",
-		.start  = TEGRA_DPAUX_BASE,
-		.end    = TEGRA_DPAUX_BASE + TEGRA_DPAUX_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	{
-		.name	= "irq_dp",
-		.start	= INT_DPAUX,
-		.end	= INT_DPAUX,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
 #endif
 
 static struct resource ardbeg_disp2_resources[] = {
@@ -336,53 +291,6 @@ struct tmds_config ardbeg_tmds_config[] = {
 	},
 };
 
-struct tmds_config ardbeg_tn8_tmds_config[] = {
-	{ /* 480p/576p / 25.2MHz/27MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 27000000,
-	.pll0 = 0x01003010,
-	.pll1 = 0x00301b00,
-	.pe_current    = 0x00000000,
-	.drive_current = 0x1C1C1C1C,
-	.peak_current  = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{ /* 720p / 74.25MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 74250000,
-	.pll0 = 0x01003110,
-	.pll1 = 0x00301500,
-	.pe_current    = 0x00000000,
-	.drive_current = 0x23232323,
-	.peak_current  = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{ /* 1080p / 148.5MHz modes */
-	.version = MKDEV(1, 0),
-	.pclk = 148500000,
-	.pll0 = 0x01003310,
-	.pll1 = 0x10300F00,
-	.pe_current    = 0x00000000,
-	.drive_current = 0x2B2C2D2B,
-	.peak_current  = 0x00000000,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
-	},
-	{
-	.version = MKDEV(1, 0),
-	.pclk = INT_MAX,
-	.pll0 = 0x01003F10,
-	.pll1 = 0x10300700,
-	.pe_current    = 0x00000000,
-	.drive_current = 0x32323131,
-	.peak_current  = 0x10101010,
-	.pad_ctls0_mask    = 0xfffff0ff,
-	.pad_ctls0_setting = 0x00000600, /* BG_VREF_LEVEL */
-	},
-};
-
 struct tegra_hdmi_out ardbeg_hdmi_out = {
 	.tmds_config = ardbeg_tmds_config,
 	.n_tmds_config = ARRAY_SIZE(ardbeg_tmds_config),
@@ -540,33 +448,16 @@ static struct platform_device ardbeg_nvmap_device  = {
 		.platform_data = &ardbeg_nvmap_data,
 	},
 };
-static struct tegra_io_dpd dsic_io = {
-	.name			= "DSIC",
-	.io_dpd_reg_index	= 1,
-	.io_dpd_bit		= 8,
-};
+
 static struct tegra_io_dpd dsid_io = {
 	.name			= "DSID",
 	.io_dpd_reg_index	= 1,
 	.io_dpd_bit		= 9,
 };
 
-static struct tegra_dc_dp_lt_settings ardbeg_edp_lt_data[] = {
-	/* DriveCurrent	Preemphasis	PostCursor	tx_pu	load_adj */
-	{0x13131313,	0x00000000,	0x00000000,	0x20,	0x3},
-	{0x13131313,	0x00000000,	0x00000000,	0x20,	0x4},
-	{0x19191919,	0x09090909,	0x00000000,	0x30,	0x6}
-};
-
-static struct tegra_dp_out dp_settings = {
-	/* Panel can override this with its own LT data */
-	.lt_settings = ardbeg_edp_lt_data,
-	.n_lt_settings = ARRAY_SIZE(ardbeg_edp_lt_data),
-};
-
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
 /* can be called multiple times */
-static struct tegra_panel *yellowstone_panel_configure(struct board_info *board_out,
+static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 	u8 *dsi_instance_out)
 {
 	struct tegra_panel *panel = NULL;
@@ -580,44 +471,44 @@ static struct tegra_panel *yellowstone_panel_configure(struct board_info *board_
 	return panel;
 }
 
-static void yellowstone_panel_select(void)
+static void ardbeg_panel_select(void)
 {
 	struct tegra_panel *panel = NULL;
 	struct board_info board;
 	u8 dsi_instance;
 
-	panel = yellowstone_panel_configure(&board, &dsi_instance);
+	panel = ardbeg_panel_configure(&board, &dsi_instance);
 
 	if (panel) {
 		if (panel->init_sd_settings)
 			panel->init_sd_settings(&sd_settings);
 
 		if (panel->init_dc_out) {
-			panel->init_dc_out(&yellowstone_disp1_out);
-			if (yellowstone_disp1_out.type == TEGRA_DC_OUT_DSI) {
-				yellowstone_disp1_out.dsi->dsi_instance =
+			panel->init_dc_out(&ardbeg_disp1_out);
+			if (ardbeg_disp1_out.type == TEGRA_DC_OUT_DSI) {
+				ardbeg_disp1_out.dsi->dsi_instance =
 					dsi_instance;
-				yellowstone_disp1_out.dsi->dsi_panel_rst_gpio =
+				ardbeg_disp1_out.dsi->dsi_panel_rst_gpio =
 					DSI_PANEL_RST_GPIO;
-				yellowstone_disp1_out.dsi->dsi_panel_bl_pwm_gpio =
+				ardbeg_disp1_out.dsi->dsi_panel_bl_pwm_gpio =
 					DSI_PANEL_BL_PWM_GPIO;
-				yellowstone_disp1_out.dsi->te_gpio = TEGRA_GPIO_PR6;
+				ardbeg_disp1_out.dsi->te_gpio = TEGRA_GPIO_PR6;
 			}
 		}
 
 		if (panel->init_fb_data)
-			panel->init_fb_data(&yellowstone_disp1_fb_data);
+			panel->init_fb_data(&ardbeg_disp1_fb_data);
 
 		if (panel->init_cmu_data)
-			panel->init_cmu_data(&yellowstone_disp1_pdata);
+			panel->init_cmu_data(&ardbeg_disp1_pdata);
 
 		if (panel->set_disp_device)
-			panel->set_disp_device(&yellowstone_disp1_device);
+			panel->set_disp_device(&ardbeg_disp1_device);
 
-		if (yellowstone_disp1_out.type == TEGRA_DC_OUT_DSI) {
+		if (ardbeg_disp1_out.type == TEGRA_DC_OUT_DSI) {
 			tegra_dsi_resources_init(dsi_instance,
-				yellowstone_disp1_resources,
-				ARRAY_SIZE(yellowstone_disp1_resources));
+				ardbeg_disp1_resources,
+				ARRAY_SIZE(ardbeg_disp1_resources));
 		}
 
 		if (panel->register_bl_dev)
@@ -634,7 +525,6 @@ int __init ardbeg_panel_init(void)
 	int err = 0;
 	struct resource __maybe_unused *res;
 	struct platform_device *phost1x = NULL;
-	struct board_info board_info;
 
 	struct device_node *dc1_node = NULL;
 	struct device_node *dc2_node = NULL;
