@@ -934,18 +934,8 @@ static void __init tegra_ardbeg_early_init(void)
 {
 	tegra_clk_init_from_table(ardbeg_clk_init_table);
 	tegra_clk_verify_parents();
-	if (of_machine_is_compatible("nvidia,laguna"))
-		tegra_soc_device_init("laguna");
-	else if (of_machine_is_compatible("nvidia,tn8"))
-		tegra_soc_device_init("tn8");
-	else if (of_machine_is_compatible("google,yellowstone"))
-		tegra_soc_device_init("yellowstone");
-	else if (of_machine_is_compatible("nvidia,ardbeg_sata"))
-		tegra_soc_device_init("ardbeg_sata");
-	else if (of_machine_is_compatible("nvidia,norrin"))
-		tegra_soc_device_init("norrin");
-	else
-		tegra_soc_device_init("ardbeg");
+
+	tegra_soc_device_init("ardbeg");
 }
 
 static struct tegra_dtv_platform_data ardbeg_dtv_pdata = {
