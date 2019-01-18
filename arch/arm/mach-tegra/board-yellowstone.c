@@ -841,27 +841,7 @@ static void __init ardbeg_sysedp_init(void)
 
 static void __init ardbeg_sysedp_dynamic_capping_init(void)
 {
-	struct board_info bi;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100)
-			tn8_sysedp_dynamic_capping_init();
-		else
-			shield_sysedp_dynamic_capping_init();
-		break;
-	case BOARD_E1922:
-	case BOARD_E1784:
-	case BOARD_P1761:
-		tn8_sysedp_dynamic_capping_init();
-		break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-	default:
-		break;
-	}
+	shield_sysedp_dynamic_capping_init();
 }
 
 static void __init ardbeg_sysedp_batmon_init(void)
