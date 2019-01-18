@@ -527,48 +527,17 @@ static struct tegra_xusb_platform_data xusb_pdata = {
 static void ardbeg_xusb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
-
 	xusb_pdata.lane_owner = (u8) tegra_get_lane_owner_info();
 
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM374 ||
-			board_info.board_id == BOARD_PM370 ||
-			board_info.board_id == BOARD_PM363) {
-		/* Laguna */
-		pr_info("Laguna ERS. 0x%x\n", board_info.board_id);
+	pr_info("Shield ERS 0x%x\n", board_info.board_id);
+	/* Shield ERS */
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
+			 TEGRA_XUSB_SS_P0);
 
-		if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-			xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
-				TEGRA_XUSB_SS_P0);
-
-		if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-			xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
-				TEGRA_XUSB_SS_P1 | TEGRA_XUSB_USB2_P2);
-
-		/* FIXME Add for UTMIP2 when have odmdata assigend */
-	} else {
-		/* Ardbeg */
-		if (board_info.board_id == BOARD_E1781) {
-			pr_info("Shield ERS-S. 0x%x\n", board_info.board_id);
-			/* Shield ERS-S */
-			if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0);
-
-			if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-				xusb_pdata.portmap &= ~(
-					TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_SS_P0 |
-					TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
-		} else {
-			pr_info("Shield ERS 0x%x\n", board_info.board_id);
-			/* Shield ERS */
-			if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
-					TEGRA_XUSB_SS_P0);
-
-			if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
-					TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
+	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+		 xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
+			 TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
 		}
 		/* FIXME Add for UTMIP2 when have odmdata assigend */
 	}
