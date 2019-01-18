@@ -200,7 +200,6 @@ static struct resource ardbeg_disp2_resources[] = {
 	},
 };
 
-
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
 static struct tegra_dc_sd_settings sd_settings;
 
@@ -274,11 +273,7 @@ static int ardbeg_hdmi_hotplug_init(struct device *dev)
 {
 	if (!ardbeg_hdmi_vddio) {
 #ifdef CONFIG_TEGRA_HDMI_PRIMARY
-		if (of_machine_is_compatible("nvidia,tn8") ||
-		    of_machine_is_compatible("google,yellowstone"))
-			ardbeg_hdmi_vddio = regulator_get(dev, "vdd-out1-5v0");
-		else
-			ardbeg_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
+		ardbeg_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
 #else
 		ardbeg_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
 #endif
@@ -392,7 +387,6 @@ struct tegra_hdmi_out ardbeg_hdmi_out = {
 	.tmds_config = ardbeg_tmds_config,
 	.n_tmds_config = ARRAY_SIZE(ardbeg_tmds_config),
 };
-
 
 #if defined(CONFIG_FRAMEBUFFER_CONSOLE)
 static struct tegra_dc_mode hdmi_panel_modes[] = {
@@ -572,141 +566,58 @@ static struct tegra_dp_out dp_settings = {
 
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
 /* can be called multiple times */
-static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
+static struct tegra_panel *yellowstone_panel_configure(struct board_info *board_out,
 	u8 *dsi_instance_out)
 {
 	struct tegra_panel *panel = NULL;
 	u8 dsi_instance = DSI_INSTANCE_0;
-	struct board_info boardtmp;
 
-	if (!board_out)
-		board_out = &boardtmp;
-	tegra_get_display_board_info(board_out);
+	panel = &dsi_j_wuxga_7;
+	tegra_io_dpd_enable(&dsid_io);
 
-	switch (board_out->board_id) {
-	case BOARD_E1639:
-	case BOARD_E1813:
-		panel = &dsi_s_wqxga_10_1;
-		break;
-	case BOARD_PM354:
-		panel = &dsi_a_1080p_14_0;
-		break;
-	case BOARD_E1627:
-#ifdef PBP5_EVT_BOARD
-		panel = &dsi_j_wuxga_7;
-#else
-		panel = &dsi_p_wuxga_10_1;
-#endif
-		tegra_io_dpd_enable(&dsid_io);
-		break;
-	case BOARD_E1549:
-		panel = &dsi_lgd_wxga_7_0;
-		break;
-	case BOARD_PM363:
-	case BOARD_E1824:
-		panel = &edp_a_1080p_14_0;
-		ardbeg_disp1_out.type = TEGRA_DC_OUT_DP;
-		ardbeg_disp1_out.dp_out = &dp_settings;
-		ardbeg_disp1_device.resource = ardbeg_disp1_edp_resources;
-		ardbeg_disp1_device.num_resources =
-			ARRAY_SIZE(ardbeg_disp1_edp_resources);
-		break;
-	case BOARD_PM366:
-		panel = &lvds_c_1366_14;
-		ardbeg_disp1_out.type = TEGRA_DC_OUT_LVDS;
-		ardbeg_disp1_device.resource = ardbeg_disp1_edp_resources;
-		ardbeg_disp1_device.num_resources =
-			ARRAY_SIZE(ardbeg_disp1_edp_resources);
-		break;
-	case BOARD_E1807:
-		panel = &dsi_a_1200_800_8_0;
-		dsi_instance = DSI_INSTANCE_0;
-		tegra_io_dpd_enable(&dsic_io);
-		tegra_io_dpd_enable(&dsid_io);
-		break;
-	case BOARD_E1937:
-		panel = &dsi_a_1200_1920_7_0;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	case BOARD_P1761:
-		if (tegra_get_board_panel_id())
-			panel = &dsi_a_1200_1920_7_0;
-		else
-			panel = &dsi_a_1200_800_8_0;
-		dsi_instance = DSI_INSTANCE_0;
-		tegra_io_dpd_enable(&dsic_io);
-		tegra_io_dpd_enable(&dsid_io);
-		break;
-	case BOARD_YS:
-		panel = &dsi_j_wuxga_7;
-		dsi_instance = DSI_INSTANCE_0;
-		tegra_io_dpd_enable(&dsic_io);
-		tegra_io_dpd_enable(&dsid_io);
-		break;
-	default:
-		panel = &dsi_p_wuxga_10_1;
-		tegra_io_dpd_enable(&dsic_io);
-		tegra_io_dpd_enable(&dsid_io);
-		break;
-	}
 	if (dsi_instance_out)
 		*dsi_instance_out = dsi_instance;
 	return panel;
 }
 
-static void ardbeg_panel_select(void)
+static void yellowstone_panel_select(void)
 {
 	struct tegra_panel *panel = NULL;
 	struct board_info board;
-	struct board_info mainboard;
 	u8 dsi_instance;
 
-	panel = ardbeg_panel_configure(&board, &dsi_instance);
+	panel = yellowstone_panel_configure(&board, &dsi_instance);
 
 	if (panel) {
 		if (panel->init_sd_settings)
 			panel->init_sd_settings(&sd_settings);
 
 		if (panel->init_dc_out) {
-			panel->init_dc_out(&ardbeg_disp1_out);
-			if (ardbeg_disp1_out.type == TEGRA_DC_OUT_DSI) {
-				ardbeg_disp1_out.dsi->dsi_instance =
+			panel->init_dc_out(&yellowstone_disp1_out);
+			if (yellowstone_disp1_out.type == TEGRA_DC_OUT_DSI) {
+				yellowstone_disp1_out.dsi->dsi_instance =
 					dsi_instance;
-				ardbeg_disp1_out.dsi->dsi_panel_rst_gpio =
+				yellowstone_disp1_out.dsi->dsi_panel_rst_gpio =
 					DSI_PANEL_RST_GPIO;
-				ardbeg_disp1_out.dsi->dsi_panel_bl_pwm_gpio =
+				yellowstone_disp1_out.dsi->dsi_panel_bl_pwm_gpio =
 					DSI_PANEL_BL_PWM_GPIO;
-				ardbeg_disp1_out.dsi->te_gpio = TEGRA_GPIO_PR6;
-			}
-
-			tegra_get_board_info(&mainboard);
-			if ((mainboard.board_id == BOARD_E1784) ||
-			    (mainboard.board_id == BOARD_P1761) ||
-			    (mainboard.board_id == BOARD_YS)) {
-
-				ardbeg_disp1_out.rotation = 180;
-
-				if ((board.board_id == BOARD_E1937) &&
-					(board.sku == 1000))
-					ardbeg_disp1_out.dsi->
-						dsi_panel_rst_gpio =
-						TEGRA_GPIO_PN4;
+				yellowstone_disp1_out.dsi->te_gpio = TEGRA_GPIO_PR6;
 			}
 		}
 
 		if (panel->init_fb_data)
-			panel->init_fb_data(&ardbeg_disp1_fb_data);
+			panel->init_fb_data(&yellowstone_disp1_fb_data);
 
 		if (panel->init_cmu_data)
-			panel->init_cmu_data(&ardbeg_disp1_pdata);
+			panel->init_cmu_data(&yellowstone_disp1_pdata);
 
 		if (panel->set_disp_device)
-			panel->set_disp_device(&ardbeg_disp1_device);
+			panel->set_disp_device(&yellowstone_disp1_device);
 
-		if (ardbeg_disp1_out.type == TEGRA_DC_OUT_DSI) {
+		if (yellowstone_disp1_out.type == TEGRA_DC_OUT_DSI) {
 			tegra_dsi_resources_init(dsi_instance,
-				ardbeg_disp1_resources,
-				ARRAY_SIZE(ardbeg_disp1_resources));
+				yellowstone_disp1_resources,
+				ARRAY_SIZE(yellowstone_disp1_resources));
 		}
 
 		if (panel->register_bl_dev)
@@ -715,7 +626,6 @@ static void ardbeg_panel_select(void)
 		if (panel->register_i2c_bridge)
 			panel->register_i2c_bridge();
 	}
-
 }
 #endif
 
@@ -796,11 +706,6 @@ int __init ardbeg_panel_init(void)
 		}
 	}
 #endif
-	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_P1761) {
-		ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config;
-	}
-
 	if (!of_have_populated_dt() || !dc2_node ||
 		!of_device_is_available(dc2_node)) {
 #ifndef CONFIG_TEGRA_HDMI_PRIMARY
