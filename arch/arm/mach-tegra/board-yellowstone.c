@@ -826,15 +826,9 @@ __sensor_hub_init(const struct sensor_hub_platform_data *pdata)
 
 static int __init ardbeg_sensor_hub_init(void)
 {
-	int hwid = get_cci_hw_id();
 	const struct sensor_hub_platform_data *pdata;
 
-	/* choose which platform */
-	if (hwid <= DVT2)
-		pdata = &sensor_hub_pdata_pre_dvt2;
-	else
-		pdata = &sensor_hub_pdata;
-
+	pdata = &sensor_hub_pdata;
 	__sensor_hub_init(pdata);
 
 	return 0;
