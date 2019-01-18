@@ -720,16 +720,6 @@ static struct sensor_hub_platform_data sensor_hub_pdata = {
 	.power_off = sh_power_off,
 };
 
-/* platform data for hardware elder then DVT2 */
-static struct sensor_hub_platform_data sensor_hub_pdata_pre_dvt2 = {
-	.gpio_reset_n = TEGRA_GPIO_PQ4,
-	.gpio_pwr_en = TEGRA_GPIO_PQ1,
-	.gpio_boot_cfg0 = TEGRA_GPIO_PQ2,
-	.gpio_boot_cfg1 = TEGRA_GPIO_PQ3,
-	.power_on = sh_power_on,
-	.power_off = sh_power_off,
-};
-
 static struct spi_board_info sensor_hub_spi_board = {
 	.modalias = SH_SPI_NAME,
 	.max_speed_hz = 1000000,
@@ -739,27 +729,10 @@ static struct spi_board_info sensor_hub_spi_board = {
 	.platform_data = &sensor_hub_pdata,
 };
 
-#if 0
-static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
-	/* name         parent          rate            enabled */
-	{ "extern2",    "pll_p",        41000000,       false},
-	{ "clk_out_2",  "extern2",      40800000,       false},
-	{ NULL,         NULL,           0,              0},
-};
-#endif
-
 static struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
 	.platform_id = RM_PLATFORM_K107,
-	.name_of_clock = "clk_out_2",
-	.name_of_clock_con = "extern2",
-};
-
-static struct rm_spi_ts_platform_data rm31080ts_norrin_data = {
-	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
-	.config = 0,
-	.platform_id = RM_PLATFORM_P140,
 	.name_of_clock = "clk_out_2",
 	.name_of_clock_con = "extern2",
 };
@@ -781,67 +754,26 @@ static struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
 	},
 };
 
-static struct spi_board_info rm31080a_norrin_spi_board[1] = {
-	{
-		.modalias = "rm_ts_spidev",
-		.bus_num = NORRIN_TOUCH_SPI_ID,
-		.chip_select = NORRIN_TOUCH_SPI_CS,
-		.max_speed_hz = 12 * 1000 * 1000,
-		.mode = SPI_MODE_0,
-		.controller_data = &dev_cdata,
-		.platform_data = &rm31080ts_norrin_data,
-	},
-};
-
 static int __init ardbeg_touch_init(void)
 {
-	int err=0;
-	tegra_get_board_info(&board_info);
+	int err = 0;
 
-	if (get_cci_hw_id() == 0) {
-		pr_info("%s init maxim touch\n", __func__);
-		err = gpio_request(TOUCH_GPIO_SDN_MAXIM_STI_SPI, "TOUCH_SHDN");
-		if (err < 0)
-			pr_err("TOUCH_SHDN gpio request failed\n");
-		else {
-			pr_info("%s set TOUCH_GPIO_SDN_MAXIM_STI_SPI to HI\n", __func__);
-			gpio_direction_output(TOUCH_GPIO_SDN_MAXIM_STI_SPI, 1);
-		}
+	pr_info("%s init raydium touch\n", __func__);
 
-#if defined(CONFIG_TOUCHSCREEN_MAXIM_STI) || \
-	defined(CONFIG_TOUCHSCREEN_MAXIM_STI_MODULE)
-		if (tegra_get_touch_panel_id() == TOUCHPANEL_TN7)
-			maxim_sti_spi_board.platform_data = &maxim_sti_pdata_rd;
-		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
-#endif
-	} else {
-		pr_info("%s init raydium touch\n", __func__);
-        /* tegra_clk_init_from_table(touch_clk_init_table); */
-		if (board_info.board_id == BOARD_PM374) {
-			rm31080a_norrin_spi_board[0].irq =
-				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
-			touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
-					TOUCH_GPIO_RST_RAYDIUM_SPI,
-					&rm31080ts_norrin_data,
-					&rm31080a_norrin_spi_board[0],
-					ARRAY_SIZE(rm31080a_norrin_spi_board));
-		} else {
-			err = gpio_request(TOUCH_GPIO_SDN_MAXIM_STI_SPI, "TOUCH_SHDN");
-			if (err < 0)
-				pr_err("TOUCH_SHDN gpio request failed\n");
-			else {
-				pr_info("%s set TOUCH_GPIO_SDN_MAXIM_STI_SPI to HI\n", __func__);
-				gpio_direction_output(TOUCH_GPIO_SDN_MAXIM_STI_SPI, 1);
-			}
-			rm31080a_ardbeg_spi_board[0].irq =
-				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
-			touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
-					TOUCH_GPIO_RST_RAYDIUM_SPI,
-					&rm31080ts_ardbeg_data,
-					&rm31080a_ardbeg_spi_board[0],
-					ARRAY_SIZE(rm31080a_ardbeg_spi_board));
-		}
+	err = gpio_request(TOUCH_GPIO_SDN_MAXIM_STI_SPI, "TOUCH_SHDN");
+	if (err < 0)
+		pr_err("TOUCH_SHDN gpio request failed\n");
+	else {
+		pr_info("%s set TOUCH_GPIO_SDN_MAXIM_STI_SPI to HI\n", __func__);
+		gpio_direction_output(TOUCH_GPIO_SDN_MAXIM_STI_SPI, 1);
 	}
+	rm31080a_ardbeg_spi_board[0].irq =
+		 gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
+	touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
+		 TOUCH_GPIO_RST_RAYDIUM_SPI,
+		 &rm31080ts_ardbeg_data,
+		 &rm31080a_ardbeg_spi_board[0],
+		 ARRAY_SIZE(rm31080a_ardbeg_spi_board));
 
 	return 0;
 }
