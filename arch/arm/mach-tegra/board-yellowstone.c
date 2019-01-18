@@ -925,8 +925,6 @@ static void __init ardbeg_sysedp_batmon_init(void)
 	shield_sysedp_batmon_init();
 }
 
-
-
 static void __init edp_init(void)
 {
 	ardbeg_edp_init();
