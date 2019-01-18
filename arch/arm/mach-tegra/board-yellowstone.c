@@ -477,21 +477,6 @@ static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
 	},
 };
 
-static struct tegra_usb_platform_data tegra_ehci2_hsic_smsc_hub_pdata = {
-	.port_otg = false,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
-	.op_mode	= TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-};
-
-
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
@@ -648,40 +633,10 @@ static struct platform_device icera_bruce_device = {
 static void ardbeg_modem_init(void)
 {
 	int modem_id = tegra_get_modem_id();
-	struct board_info board_info;
-	struct board_info pmu_board_info;
-	int usb_port_owner_info = tegra_get_usb_port_owner_info();
-
-	tegra_get_board_info(&board_info);
-	tegra_get_pmu_board_info(&pmu_board_info);
 	pr_info("%s: modem_id = %d\n", __func__, modem_id);
 
-	switch (modem_id) {
-	case TEGRA_BB_BRUCE:
-		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
-			/* Set specific USB wake source for Ardbeg */
-			if (board_info.board_id == BOARD_E1780)
-				tegra_set_wake_source(42, INT_USB2);
-			if (pmu_board_info.board_id == BOARD_E1736 ||
-				pmu_board_info.board_id == BOARD_E1769)
-				baseband_pdata.regulator_name = NULL;
-			platform_device_register(&icera_bruce_device);
-		}
-		break;
-	case TEGRA_BB_HSIC_HUB: /* HSIC hub */
-		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
-			tegra_ehci2_device.dev.platform_data =
-				&tegra_ehci2_hsic_smsc_hub_pdata;
-			/* Set specific USB wake source for Ardbeg */
-			if (board_info.board_id == BOARD_E1780)
-				tegra_set_wake_source(42, INT_USB2);
-			platform_device_register(&tegra_ehci2_device);
-		} else
-			xusb_pdata.pretend_connect_0 = true;
-		break;
-	default:
-		return;
-	}
+	tegra_set_wake_source(42, INT_USB2);
+	platform_device_register(&icera_bruce_device);
 }
 
 #ifdef CONFIG_USE_OF
