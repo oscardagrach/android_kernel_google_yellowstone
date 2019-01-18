@@ -856,28 +856,7 @@ static void __init ardbeg_sysedp_batmon_init(void)
 
 static void __init edp_init(void)
 {
-	struct board_info bi;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100)
-			tn8_edp_init();
-		else
-			ardbeg_edp_init();
-		break;
-	case BOARD_P1761:
-			tn8_edp_init();
-			break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-			laguna_edp_init();
-			break;
-	default:
-			ardbeg_edp_init();
-			break;
-	}
+	ardbeg_edp_init();
 }
 
 static void __init tegra_ardbeg_early_init(void)
