@@ -98,7 +98,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
-int cci_hw_id = 0;
+int cci_hw_id = 6;
 int ccibootmode = 0;
 
 static struct board_info board_info, display_board_info;
