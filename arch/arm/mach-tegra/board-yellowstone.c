@@ -922,22 +922,7 @@ static void __init tegra_ardbeg_late_init(void)
 	platform_add_devices(ardbeg_devices, ARRAY_SIZE(ardbeg_devices));
 	tegra_io_dpd_init();
 	ardbeg_sdhci_init();
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363 ||
-			board_info.board_id == BOARD_E1782)
-		ardbeg_sata_init();
-	else
-		arbdeg_sata_clk_gate();
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM370 ||
-			board_info.board_id == BOARD_PM363)
-		laguna_regulator_init();
-	else if (board_info.board_id == BOARD_PM374)
-		norrin_regulator_init();
-	else
-		ardbeg_regulator_init();
+	ardbeg_regulator_init();
 	ardbeg_dtv_init();
 	ardbeg_suspend_init();
 	ardbeg_emc_init();
@@ -945,28 +930,12 @@ static void __init tegra_ardbeg_late_init(void)
 	isomgr_init();
 	ardbeg_touch_init();
 	ardbeg_panel_init();
-	switch (board_info.board_id) {
-	case BOARD_PM358:
-		laguna_pm358_pmon_init();
-		break;
-	case BOARD_E1784:
-	case BOARD_P1761:
-		tn8_p1761_pmon_init();
-		break;
-	default:
-		ardbeg_pmon_init();
-		break;
-	}
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363)
-		laguna_pcie_init();
-	else {
-		/* put PEX pads into DPD mode to save additional power */
-		tegra_io_dpd_enable(&pexbias_io);
-		tegra_io_dpd_enable(&pexclk1_io);
-		tegra_io_dpd_enable(&pexclk2_io);
-	}
+	ardbeg_pmon_init();
+
+	/* put PEX pads into DPD mode to save additional power */
+	tegra_io_dpd_enable(&pexbias_io);
+	tegra_io_dpd_enable(&pexclk1_io);
+	tegra_io_dpd_enable(&pexclk2_io);
 
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
