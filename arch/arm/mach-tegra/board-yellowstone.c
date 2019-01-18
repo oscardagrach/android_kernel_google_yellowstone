@@ -619,9 +619,6 @@ static void ardbeg_xusb_init(void)
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
 		 xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
 			 TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
-		}
-		/* FIXME Add for UTMIP2 when have odmdata assigend */
-	}
 
 	if (usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)
 		xusb_pdata.portmap |= TEGRA_XUSB_HSIC_P0;
@@ -913,11 +910,6 @@ static int __init ardbeg_sensor_hub_init(void)
 	__sensor_hub_init(pdata);
 
 	return 0;
-}
-
-static void __init ardbeg_sysedp_init(void)
-{
-	shield_new_sysedp_init();
 }
 
 static void __init ardbeg_sysedp_dynamic_capping_init(void)
