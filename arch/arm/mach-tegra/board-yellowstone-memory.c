@@ -2762,7 +2762,7 @@ static struct tegra12_emc_pdata yellowstone_lpddr3_emc_pdata = {
 	.num_tables = ARRAY_SIZE(yellowstone_lpddr3_emc_table),
 };
 
-int __init yellowstone_emc_init(void)
+int __init ardbeg_emc_init(void)
 {
 	/*
 	 * If the EMC table is successfully read from the NCT partition,
