@@ -1003,6 +1003,7 @@ static void __init tegra_ardbeg_late_init(void)
 	platform_add_devices(ardbeg_devices, ARRAY_SIZE(ardbeg_devices));
 	tegra_io_dpd_init();
 	ardbeg_sdhci_init();
+	arbdeg_sata_clk_gate();
 	ardbeg_regulator_init();
 	ardbeg_dtv_init();
 	ardbeg_suspend_init();
