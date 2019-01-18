@@ -260,7 +260,7 @@ obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-s-1080p-5.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-pinmux.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-sdhci.o
-#obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sata.o
+obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sata.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-sensors.o
 
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-panel.o
