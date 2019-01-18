@@ -203,56 +203,12 @@ static struct i2c_board_info __initdata i2c_nfc_board_info = {
 	.platform_data = &nfc_pdata,
 };
 
-static struct i2c_hid_platform_data i2c_keyboard_pdata = {
-	.hid_descriptor_address = 0x0,
-};
-
-static struct i2c_board_info __initdata i2c_keyboard_board_info = {
-	I2C_BOARD_INFO("hid", 0x3B),
-	.platform_data  = &i2c_keyboard_pdata,
-};
-
-static struct i2c_hid_platform_data i2c_touchpad_pdata = {
-	.hid_descriptor_address = 0x20,
-};
-
-static struct i2c_board_info __initdata i2c_touchpad_board_info = {
-	I2C_BOARD_INFO("hid", 0x2C),
-	.platform_data  = &i2c_touchpad_pdata,
-};
-
-
 static void ardbeg_i2c_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-
 	i2c_register_board_info(0, &rt5639_board_info, 1);
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363) {
-		i2c_keyboard_board_info.irq = gpio_to_irq(I2C_KB_IRQ);
-		i2c_register_board_info(1, &i2c_keyboard_board_info , 1);
 
-		i2c_touchpad_board_info.irq = gpio_to_irq(I2C_TP_IRQ);
-		i2c_register_board_info(1, &i2c_touchpad_board_info , 1);
-	}
-
-	switch (get_cci_hw_id()) {
-	case HWID_INVALID:
-	case EVT:
-	case DVT_DEMO:
-	case DVT1_1:
-	case DVT1_2:
-		break;
-	case DVT2:
-	case DVT3:
-	case PVT:
-	default:
-		i2c_nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PR4);
-		i2c_register_board_info(0, &i2c_nfc_board_info, 1);
-		break;
-	}
+	i2c_nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PR4);
+	i2c_register_board_info(0, &i2c_nfc_board_info, 1);
 }
 
 #ifndef CONFIG_USE_OF
