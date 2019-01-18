@@ -21,7 +21,7 @@
 #include <linux/power_supply.h>
 #include <mach/edp.h>
 #include "board.h"
-#include "board-panel.h"
+//#include "board-panel.h"
 
 /* --- EDP consumers data --- */
 /* TODO static unsigned int ov5693_states[] = { 0, 300 };*/
