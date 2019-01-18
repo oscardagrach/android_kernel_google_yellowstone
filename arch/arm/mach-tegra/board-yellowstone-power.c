@@ -890,7 +890,6 @@ static void yellowstone_charger_init(void)
 		switch (get_cci_hw_id()) {
 		case EVT:
 		case DVT_DEMO:
-		case PVT:
 			ret = gpio_request(TEGRA_GPIO_PK3, "charger_enable");
 			if (ret < 0) {
 				pr_err("%s: charger_enable TEGRA_GPIO_PK3 request failed\n",
