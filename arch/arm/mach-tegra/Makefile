@@ -257,35 +257,35 @@ obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-l-720p-5.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-j-720p-4-7.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-s-1080p-5.o
 
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-pinmux.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sdhci.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sata.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sensors.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-sdhci.o
+#obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sata.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-sensors.o
 
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-panel.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-memory.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-panel.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-memory.o
 
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-power.o
-obj-${CONFIG_MACH_ARDBEG}               += board-tn8-power.o
-obj-${CONFIG_MACH_ARDBEG}               += board-norrin-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-power.o
+#obj-${CONFIG_MACH_ARDBEG}               += board-tn8-power.o
+#obj-${CONFIG_MACH_ARDBEG}               += board-norrin-power.o
+#obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-power.o
 
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-powermon.o
-obj-${CONFIG_MACH_ARDBEG}               += board-tn8-p1761-powermon.o
+obj-${CONFIG_MACH_ARDBEG}               += board-yellowstone-powermon.o
+#obj-${CONFIG_MACH_ARDBEG}               += board-tn8-p1761-powermon.o
 
-obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-j-wuxga-7.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-uhdtv-15-6.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-wqxgap-15-6.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-1920-7-0.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-800-8-0.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-uhdtv-15-6.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-wqxgap-15-6.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-1920-7-0.o
+#obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-800-8-0.o
 ifeq ($(CONFIG_MACH_ARDBEG),y)
-obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-ardbeg-sysedp.o
-obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o
+#obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-ardbeg-sysedp.o
+#obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o
 obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-yellowstone-sysedp.o
 endif
 
