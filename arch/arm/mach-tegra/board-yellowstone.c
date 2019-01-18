@@ -278,35 +278,12 @@ static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5639 = {
 
 static void ardbeg_audio_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM370 ||
-			board_info.board_id == BOARD_PM374 ||
-			board_info.board_id == BOARD_PM363) {
-		/*Laguna*/
-		ardbeg_audio_pdata_rt5639.gpio_hp_det = TEGRA_GPIO_HP_DET;
-		ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high = 1;
-		if (board_info.board_id != BOARD_PM363)
-			ardbeg_audio_pdata_rt5639.gpio_ldo1_en = -1;
-	} else {
-		/*Ardbeg*/
+	ardbeg_audio_pdata_rt5639.gpio_hp_det =
+		 TEGRA_GPIO_HP_DET;
+	ardbeg_audio_pdata_rt5639.use_codec_jd_irq = true;
 
-		if (board_info.board_id == BOARD_E1762 ||
-			board_info.board_id == BOARD_P1761 ||
-			board_info.board_id == BOARD_E1922) {
-			ardbeg_audio_pdata_rt5639.gpio_hp_det =
-				TEGRA_GPIO_CDC_IRQ;
-			ardbeg_audio_pdata_rt5639.use_codec_jd_irq = true;
-		} else {
-			ardbeg_audio_pdata_rt5639.gpio_hp_det =
-				TEGRA_GPIO_HP_DET;
-			ardbeg_audio_pdata_rt5639.use_codec_jd_irq = true;
-		}
-		ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high = 1;
-		ardbeg_audio_pdata_rt5639.gpio_ldo1_en = TEGRA_GPIO_LDO_EN;
-	}
+	ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high = 1;
+	ardbeg_audio_pdata_rt5639.gpio_ldo1_en = TEGRA_GPIO_LDO_EN;
 
 	ardbeg_audio_pdata_rt5639.codec_name = "rt5640.0-001c";
 	ardbeg_audio_pdata_rt5639.codec_dai_name = "rt5640-aif1";
