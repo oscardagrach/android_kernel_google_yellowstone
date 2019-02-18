@@ -872,7 +872,7 @@ static void yellowstone_charger_init(void)
 		case DVT2:
 		case DVT3:
 		case PVT:
-			ret = gpio_request(TEGRA_GPIO_PK5, "bq2477x-charger");
+			ret = gpio_request(TEGRA_GPIO_PK5, "charger_enable");
 			if (ret < 0) {
 				pr_err("%s: charger_enable TEGRA_GPIO_PK5 request failed\n",
 					__func__);
