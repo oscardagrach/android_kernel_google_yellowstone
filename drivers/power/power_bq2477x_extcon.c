@@ -131,7 +131,7 @@ static int bq2477x_init_charger_regulator(struct bq2477x_extcon *psy_extcon,
 		return 0;
 	}
 
-	psy_extcon->chg_reg_desc.name  = "bq2477x-charger";
+	psy_extcon->chg_reg_desc.name  = "charger_enable";
 	psy_extcon->chg_reg_desc.ops   = &bq2477x_tegra_regulator_ops;
 	psy_extcon->chg_reg_desc.type  = REGULATOR_CURRENT;
 	psy_extcon->chg_reg_desc.owner = THIS_MODULE;

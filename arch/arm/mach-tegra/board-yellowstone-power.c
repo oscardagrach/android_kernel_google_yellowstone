@@ -864,53 +864,16 @@ static void yellowstone_charger_init(void)
 
 	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY) {
 
-		switch (get_cci_hw_id()) {
-		case EVT:
-		case DVT_DEMO:
-		case DVT1_1:
-		case DVT1_2:
-		case DVT2:
-		case DVT3:
-		case PVT:
-			ret = gpio_request(TEGRA_GPIO_PK5, "bq2477x-charger");
-			if (ret < 0) {
-				pr_err("%s: charger_enable TEGRA_GPIO_PK5 request failed\n",
-					__func__);
-			} else {
-				ret = gpio_direction_output(TEGRA_GPIO_PK5, 1);
-				if (ret < 0)
-					pr_err("%s: TEGRA_GPIO_PK5 direction failed\n",
-						__func__);
-			}
-			msleep(20);
-		default:
-			break;
-		}
-
-		switch (get_cci_hw_id()) {
-		case EVT:
-		case DVT_DEMO:
-			ret = gpio_request(TEGRA_GPIO_PK3, "charger_enable");
-			if (ret < 0) {
-				pr_err("%s: charger_enable TEGRA_GPIO_PK3 request failed\n",
-					__func__);
-			} else {
-				int value;
-
-				if (get_cci_hw_id() == EVT)
-					value = 1;
-				else
-					value = 0;
-
-				ret = gpio_direction_output(TEGRA_GPIO_PK3,
-									value);
-				if (ret < 0)
-					pr_err("%s: TEGRA_GPIO_PK3 direction %d failed\n",
-						__func__, value);
-			}
-		default:
-			break;
-		}
+        ret = gpio_request(TEGRA_GPIO_PK5, "charger_enable");
+        if (ret < 0) {
+            pr_err("%s: charger_enable TEGRA_GPIO_PK5 request failed\n",
+                 __func__);
+        } else {
+            ret = gpio_direction_output(TEGRA_GPIO_PK5, 1);
+            if (ret < 0)
+                pr_err("%s: TEGRA_GPIO_PK5 direction failed\n",
+                     __func__);
+        }
 
 		platform_device_register(&yellowstone_bq2477x_extcon);
 
