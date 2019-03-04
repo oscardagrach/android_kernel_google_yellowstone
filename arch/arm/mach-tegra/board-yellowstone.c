@@ -541,20 +541,32 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 static struct gpio modem_gpios[] = {
 	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
 	{MDM_RST, GPIOF_OUT_INIT_HIGH, "MODEM RESET"},
-	{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
+	//{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
 };
 
 static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
 	.unaligned_dma_buf_supported = true,
-	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
 		.vbus_gpio = -1,
 		.hot_plug = false,
 		.remote_wakeup_supported = true,
 		.power_off_on_suspend = true,
+	},
+	.u_cfg.utmi = {
+		.hssync_start_delay = 0,
+		.elastic_limit = 16,
+		.idle_wait_delay = 17,
+		.term_range_adj = 6,
+		.xcvr_setup = 8,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.xcvr_setup_offset = 0,
+		.xcvr_use_fuses = 1,
+		.vbus_oc_map = 0x5,
 	},
 };
 
@@ -626,7 +638,7 @@ static void ardbeg_xusb_init(void)
 	if (usb_port_owner_info & HSIC2_PORT_OWNER_XUSB)
 		xusb_pdata.portmap |= TEGRA_XUSB_HSIC_P1;
 }
-
+#if 0
 static int baseband_init(void)
 {
 	int ret;
@@ -676,14 +688,30 @@ static struct platform_device icera_bruce_device = {
 		.platform_data = &baseband_pdata,
 	},
 };
-
+#endif
 static void ardbeg_modem_init(void)
 {
+	int ret = 0;
 	int modem_id = tegra_get_modem_id();
 	pr_info("%s: modem_id = %d\n", __func__, modem_id);
 
 	tegra_set_wake_source(42, INT_USB2);
-	platform_device_register(&icera_bruce_device);
+
+	ret = gpio_request_array(modem_gpios, ARRAY_SIZE(modem_gpios));
+	if (ret) {
+		pr_warn("%s:gpio request failed\n", __func__);
+		return ret;
+	}
+
+	gpio_set_value(MDM_RST, 1);
+	gpio_set_value(MODEM_EN, 1);
+
+	gpio_export(MDM_RST, false);
+	gpio_export(MODEM_EN, false);
+
+	tegra_ehci2_device.dev.platform_data =
+			&tegra_ehci2_hsic_baseband_pdata;
+	platform_device_register(&tegra_ehci2_device);
 }
 
 #ifdef CONFIG_USE_OF

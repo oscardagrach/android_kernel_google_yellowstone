@@ -640,7 +640,7 @@ FIXED_REG(1,	usb0_vbus,	usb0_vbus,
  * GPIO_PK3 to overcome errors in tegra usb driver
  */
 FIXED_REG(2,	usb1_vbus,	usb1_vbus,
-	NULL,	0,	0,	TEGRA_GPIO_PK3,
+	NULL,	1,	0,	TEGRA_GPIO_PN5,
 	true,	true,	0,	5000,	0);
 
 FIXED_REG(3,	usb2_vbus,	usb2_vbus,
@@ -669,7 +669,7 @@ FIXED_REG(12,	vdd_hdmi_5v0,	vdd_hdmi_5v0,
 
 FIXED_REG(15,	ti913_gpio2,	ti913_gpio2,
 	NULL,	1,	1,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO2,
-	false,	true,	0,	3300, 0);
+	false,	true,	1,	3300, 0);
 
 FIXED_REG(16,	ti913_gpio3,	ti913_gpio3,
 	NULL,	0,	0,	PALMAS_TEGRA_GPIO_BASE + PALMAS_GPIO3,
